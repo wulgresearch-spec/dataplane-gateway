@@ -129,6 +129,22 @@ class LocalMasterKeyKmsUnwrapAdapterTest {
   }
 
   @Test
+  void rejectsWrappedDataKeyExactlyAtTheMinimumLength() {
+    // GCM_NONCE_BYTES (12) + GCM_TAG_BYTES (16) == 28: a nonce and a tag with zero ciphertext
+    // between them. failsClosedOnShortEnvelope only reaches byte[10], so the boundary itself is
+    // untested — a `<=` that drifted to `<` would hand a zero-length ciphertext to Cipher.
+    final byte[] mk = masterKey((byte) 0x11);
+
+    assertThatThrownBy(
+            () ->
+                new LocalMasterKeyKmsUnwrapAdapter(mk).unwrapInto(new byte[28], CONTEXT, dk -> {}))
+        .isInstanceOf(KmsException.class)
+        .hasMessageContaining("wrapped data key too short")
+        .extracting(e -> ((KmsException) e).reason())
+        .isEqualTo(KmsException.Reason.INVALID_ENVELOPE);
+  }
+
+  @Test
   void failsClosedWhenUnwrappedKeyHasInvalidLength() throws Exception {
     final byte[] mk = masterKey((byte) 0x11);
     final byte[] wrapped = wrap(mk, CONTEXT, filled((byte) 0xAB, 20)); // 20 is neither 16 nor 32

@@ -74,6 +74,23 @@ class KmsBackedCredentialMaterialSourceTest {
   }
 
   @Test
+  void exposesTheSnapshotRefWithoutDecrypting() throws Exception {
+    // ref() is content-free metadata. Reading it must not unwrap a data key or touch ciphertext:
+    // callers use it for scope/version checks before deciding to materialize at all, so a KMS
+    // round-trip here would be both a needless cost and a needless exposure.
+    final SecretKey key = aes256();
+    final KmsUnwrapPort mustNotBeCalled =
+        (wrapped, context, consumer) -> {
+          throw new AssertionError("ref() must not trigger a KMS unwrap");
+        };
+    final var source =
+        new KmsBackedCredentialMaterialSource(
+            snapshot(key, encrypt(key)), mustNotBeCalled, decryptor);
+
+    assertThat(source.ref()).isEqualTo(ref());
+  }
+
+  @Test
   void failsClosedWhenKmsUnwrapFails() throws Exception {
     final SecretKey key = aes256();
     final KmsUnwrapPort failing =

@@ -106,6 +106,21 @@ class EnvelopeDecryptorTest {
   }
 
   @Test
+  void rejectsCiphertextExactlyAtTheTagLength() throws Exception {
+    // GCM_TAG_BITS / 8 == 16. A ciphertext of exactly the tag length carries no plaintext at all,
+    // so it must be refused structurally. rejectsInvalidEnvelopeSizes only reaches byte[4], which
+    // leaves the boundary itself untested: a `<=` that drifted to `<` would let this envelope
+    // reach Cipher and surface as INTEGRITY_FAILURE, losing the real (structural) reason.
+    final byte[] key = aes256().getEncoded();
+
+    assertThatThrownBy(() -> decryptor.decryptInto(key, NONCE, new byte[16], AAD, pt -> {}))
+        .isInstanceOf(KmsException.class)
+        .hasMessageContaining("ciphertext too short")
+        .extracting(e -> ((KmsException) e).reason())
+        .isEqualTo(KmsException.Reason.INVALID_ENVELOPE);
+  }
+
+  @Test
   void plaintextIsZeroizedAfterConsumerReturns() throws Exception {
     final SecretKey key = aes256();
     final byte[] ciphertext = encrypt(key, AAD, PLAINTEXT);

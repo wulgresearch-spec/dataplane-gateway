@@ -19,6 +19,7 @@ import io.reliabilityai.gateway.ports.CredentialRequest;
 import io.reliabilityai.gateway.ports.SecretsProviderPort.MaterializationResult;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.Arrays;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
 
@@ -162,6 +163,42 @@ class MaterializationServiceTest {
   }
 
   @Test
+  void acceptsCredentialExactlyAtTheMaximumLength() {
+    // maxCredentialLength is a ceiling, not an exclusive limit. failsClosedOnOversizedCredential...
+    // proves only that Integer.MAX_VALUE is refused; it says nothing about the boundary itself, so
+    // a `>` that drifted to `>=` would silently refuse every credential sitting exactly on the
+    // configured baseline and look like a fail-closed policy rather than an off-by-one.
+    final char[] atLimit = new char[MAX_LEN];
+    Arrays.fill(atLimit, 'k');
+    snapshotPort.source = new FakeSource(ref(TENANT, NOW.plusSeconds(3600)), atLimit, false);
+
+    assertThat(service.materialize(REQUEST)).isInstanceOf(MaterializationResult.Leased.class);
+    assertThat(metrics.materialized).isEqualTo(1);
+  }
+
+  @Test
+  void sanitizesPartiallyCopiedMaterialWhenLeaseConstructionFails() {
+    // F-2 (Doc 26 MSC-10/SP-INV): a secret never escapes sanitization. The existing
+    // failsClosedAndSanitizesOnMaterializationError cannot prove this — its source throws BEFORE
+    // writing anything, so the buffer it would inspect is still all zeros and the Arrays.fill has
+    // nothing to erase. It asserts the metric, not the wipe. This source populates the service's
+    // own buffer with real secret material, keeps the reference, and only then fails, which makes
+    // the difference between "wiped" and "not wiped" observable.
+    final PopulateThenThrowSource source =
+        new PopulateThenThrowSource(
+            ref(TENANT, NOW.plusSeconds(3600)), "super-secret-value".toCharArray());
+    snapshotPort.source = source;
+
+    assertUnavailable(service.materialize(REQUEST), "materialization-error");
+
+    assertThat(source.captured).as("the service must hand its buffer to copyInto").isNotNull();
+    assertThat(source.captured).containsOnly('\0');
+    assertThat(new String(source.captured)).doesNotContain("super-secret-value");
+    assertThat(metrics.sanitizations).isEqualTo(1);
+    assertThat(metrics.materialized).isZero();
+  }
+
+  @Test
   void rejectsNullRequest() {
     assertThatThrownBy(() -> service.materialize(null)).isInstanceOf(NullPointerException.class);
   }
@@ -229,6 +266,38 @@ class MaterializationServiceTest {
         throw new IllegalStateException("copy failure");
       }
       System.arraycopy(material, 0, destination, 0, material.length);
+    }
+  }
+
+  /**
+   * A source that genuinely populates the destination with secret material and only then fails,
+   * retaining the destination reference so a test can assert the buffer was wiped afterwards.
+   */
+  private static final class PopulateThenThrowSource implements CredentialMaterialSource {
+    private final CredentialSnapshotRef ref;
+    private final char[] material;
+    private char[] captured;
+
+    private PopulateThenThrowSource(final CredentialSnapshotRef ref, final char[] material) {
+      this.ref = ref;
+      this.material = material;
+    }
+
+    @Override
+    public CredentialSnapshotRef ref() {
+      return ref;
+    }
+
+    @Override
+    public int length() {
+      return material.length;
+    }
+
+    @Override
+    public void copyInto(final char[] destination) {
+      captured = destination;
+      System.arraycopy(material, 0, destination, 0, material.length);
+      throw new IllegalStateException("failure after the buffer was populated");
     }
   }
 
