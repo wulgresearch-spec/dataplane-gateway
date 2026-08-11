@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  gateway-dp-memory-crypto — production cryptography for the Memory Runtime (AD-028, closes B24).
+
+  Implements MemoryCryptoPort with AES-256-GCM envelope encryption: a random data key per record,
+  wrapped by a versioned master key, with scope-bound authenticated data. It contains no policy, no
+  ranking, no retrieval, no governance and no search — those belong to C17 and stay there.
+
+  The dependency runs one way: this module depends on the memory runtime, and the memory runtime
+  depends on nothing of ours. C17 cannot reference a cipher even by accident.
+-->
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+  <parent>
+    <groupId>io.reliabilityai.gateway</groupId>
+    <artifactId>gateway-backend-parent</artifactId>
+    <version>1.0.0-SNAPSHOT</version>
+    <relativePath>../../../pom.xml</relativePath>
+  </parent>
+  <artifactId>gateway-dp-memory-crypto</artifactId>
+  <name>Reliability-First AI Gateway :: DP :: Memory Cryptography</name>
+  <dependencies>
+    <dependency>
+      <groupId>io.reliabilityai.gateway</groupId>
+      <artifactId>gateway-lib-common</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>io.reliabilityai.gateway</groupId>
+      <artifactId>gateway-lib-canonical</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>io.reliabilityai.gateway</groupId>
+      <artifactId>gateway-dp-memory-runtime</artifactId>
+    </dependency>
+    <!--
+      Test scope only. The end-to-end test needs a real disk under the runtime to demonstrate that a
+      stolen journal file yields no plaintext, and the journal adapter is the only durable store that
+      exists. Nothing in src/main references it, so the cipher stays storage-agnostic.
+    -->
+    <dependency>
+      <groupId>io.reliabilityai.gateway</groupId>
+      <artifactId>gateway-dp-memory-store-journal</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>com.tngtech.archunit</groupId>
+      <artifactId>archunit-junit5</artifactId>
+      <scope>test</scope>
+    </dependency>
+  </dependencies>
+</project>

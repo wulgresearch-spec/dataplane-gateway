@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  gateway-dp-governance-engine — the Policy Enforcement Point (Doc 21, C4, AD-019). Consumes cached,
+  operator-supplied policy/entitlement/usage snapshots and admits or denies a request. It authors no
+  policy, owns no store, performs no I/O, and knows nothing of providers (GV-D11).
+-->
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+  <parent>
+    <groupId>io.reliabilityai.gateway</groupId>
+    <artifactId>gateway-backend-parent</artifactId>
+    <version>1.0.0-SNAPSHOT</version>
+    <relativePath>../../../pom.xml</relativePath>
+  </parent>
+  <artifactId>gateway-dp-governance-engine</artifactId>
+  <name>Reliability-First AI Gateway :: DP :: Governance Engine (C4 PEP)</name>
+
+  <properties>
+    <!-- GV-A15 (Doc 21 §45): the admission gate is a Security-critical module. A surviving mutant here
+         is a mutation of the rule that decides whether a request is allowed to happen at all. -->
+    <mutation.threshold>90</mutation.threshold>
+  </properties>
+
+  <dependencies>
+    <dependency>
+      <groupId>io.reliabilityai.gateway</groupId>
+      <artifactId>gateway-lib-common</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>io.reliabilityai.gateway</groupId>
+      <artifactId>gateway-lib-canonical</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>io.reliabilityai.gateway</groupId>
+      <artifactId>gateway-lib-ports</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>com.tngtech.archunit</groupId>
+      <artifactId>archunit-junit5</artifactId>
+      <scope>test</scope>
+    </dependency>
+  </dependencies>
+</project>

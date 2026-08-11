@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  gateway-dp-observability — the data-plane telemetry emitter (C9, Doc 27). Passive, side-effect-free,
+  content-free emission of metrics/spans/logs/observations; subordinate to Doc 14 (REA). Depends only
+  on canonical + ports + common (inward, Doc 11 R-017).
+-->
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+  <parent>
+    <groupId>io.reliabilityai.gateway</groupId>
+    <artifactId>gateway-backend-parent</artifactId>
+    <version>1.0.0-SNAPSHOT</version>
+    <relativePath>../../../pom.xml</relativePath>
+  </parent>
+  <artifactId>gateway-dp-observability</artifactId>
+  <name>Reliability-First AI Gateway :: DP :: Observability</name>
+
+  <properties>
+    <!-- OT-A15 (Doc 27 §21): observability emission conformance mutation target. -->
+    <mutation.threshold>85</mutation.threshold>
+  </properties>
+
+  <dependencies>
+    <dependency>
+      <groupId>io.reliabilityai.gateway</groupId>
+      <artifactId>gateway-lib-canonical</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>io.reliabilityai.gateway</groupId>
+      <artifactId>gateway-lib-ports</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>io.reliabilityai.gateway</groupId>
+      <artifactId>gateway-lib-common</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>com.tngtech.archunit</groupId>
+      <artifactId>archunit-junit5</artifactId>
+      <scope>test</scope>
+    </dependency>
+  </dependencies>
+</project>

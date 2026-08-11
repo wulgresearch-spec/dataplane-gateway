@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  gateway-dp-cost — the Cost Engine (C5, Doc 22). Deterministic, calculation-only cost engine: versioned
+  pricing/FX snapshots, deterministic precedence, never-underestimated projections, exact actual cost;
+  fail-closed on any uncertainty (CE-INV). Provider-neutral, credential-free, SDK-free, HTTP-free,
+  store-free; never charges/bills/persists. Depends on canonical + ports (ClockPort) + common.
+-->
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+  <parent>
+    <groupId>io.reliabilityai.gateway</groupId>
+    <artifactId>gateway-backend-parent</artifactId>
+    <version>1.0.0-SNAPSHOT</version>
+    <relativePath>../../../pom.xml</relativePath>
+  </parent>
+  <artifactId>gateway-dp-cost</artifactId>
+  <name>Reliability-First AI Gateway :: DP :: Cost Engine</name>
+  <dependencies>
+    <dependency>
+      <groupId>io.reliabilityai.gateway</groupId>
+      <artifactId>gateway-lib-canonical</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>io.reliabilityai.gateway</groupId>
+      <artifactId>gateway-lib-ports</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>io.reliabilityai.gateway</groupId>
+      <artifactId>gateway-lib-common</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>com.tngtech.archunit</groupId>
+      <artifactId>archunit-junit5</artifactId>
+      <scope>test</scope>
+    </dependency>
+  </dependencies>
+</project>

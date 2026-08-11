@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  gateway-dp-config-cache — the data-plane configuration cache/consumer (Doc 36, C15 consumer).
+  Consumes C15 config snapshots read-only (AD-013/AD-022); authors/validates/mutates nothing
+  (Doc 36 CFG-INV). Depends only on canonical + ports + common (inward, Doc 11 R-017).
+-->
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+  <parent>
+    <groupId>io.reliabilityai.gateway</groupId>
+    <artifactId>gateway-backend-parent</artifactId>
+    <version>1.0.0-SNAPSHOT</version>
+    <relativePath>../../../pom.xml</relativePath>
+  </parent>
+  <artifactId>gateway-dp-config-cache</artifactId>
+  <name>Reliability-First AI Gateway :: DP :: Config Cache</name>
+
+  <properties>
+    <!-- CFG-A15 (Doc 36 §27): config-consumption conformance harness mutation target. -->
+    <mutation.threshold>90</mutation.threshold>
+  </properties>
+
+  <dependencies>
+    <dependency>
+      <groupId>io.reliabilityai.gateway</groupId>
+      <artifactId>gateway-lib-canonical</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>io.reliabilityai.gateway</groupId>
+      <artifactId>gateway-lib-ports</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>io.reliabilityai.gateway</groupId>
+      <artifactId>gateway-lib-common</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>com.tngtech.archunit</groupId>
+      <artifactId>archunit-junit5</artifactId>
+      <scope>test</scope>
+    </dependency>
+  </dependencies>
+</project>

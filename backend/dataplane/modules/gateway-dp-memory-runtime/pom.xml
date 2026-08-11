@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  gateway-dp-memory-runtime — the Memory Runtime (C17, AD-026).
+
+  A provider-neutral, policy-enforcing memory plane. It owns the memory domain model, the write and read
+  pipelines, the memory policy engine and the audit contract. It owns no database, no vector index, no
+  embedding model and no cryptography — every one of those is a port satisfied outside this module.
+
+  Deliberately depends on NOTHING but the shared libs. There is no dependency on the plugin runtime, the
+  agent runtime, the governance engine, gateway-dp-app or any provider module. That absence is what makes
+  AD-026 MEM-1 (provider neutrality) and MEM-5 (boundary) structural rather than conventional: this module
+  cannot reach a provider, a pipeline, a plugin or a policy engine even by accident.
+-->
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+  <parent>
+    <groupId>io.reliabilityai.gateway</groupId>
+    <artifactId>gateway-backend-parent</artifactId>
+    <version>1.0.0-SNAPSHOT</version>
+    <relativePath>../../../pom.xml</relativePath>
+  </parent>
+  <artifactId>gateway-dp-memory-runtime</artifactId>
+  <name>Reliability-First AI Gateway :: DP :: Memory Runtime (C17)</name>
+  <dependencies>
+    <dependency>
+      <groupId>io.reliabilityai.gateway</groupId>
+      <artifactId>gateway-lib-common</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>io.reliabilityai.gateway</groupId>
+      <artifactId>gateway-lib-canonical</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>io.reliabilityai.gateway</groupId>
+      <artifactId>gateway-lib-ports</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>com.tngtech.archunit</groupId>
+      <artifactId>archunit-junit5</artifactId>
+      <scope>test</scope>
+    </dependency>
+  </dependencies>
+</project>

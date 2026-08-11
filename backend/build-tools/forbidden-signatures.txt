@@ -1,0 +1,29 @@
+# Forbidden API signatures — Reliability-First AI Gateway
+# Enforces frozen invariants at the language level (Doc 11 CP-2, Doc 37 IAU-A4, Doc 27 determinism).
+# Non-determinism sources must not appear in decision cores (Doc 11 R-063, Doc 32 §CRS).
+
+@defaultMessage Non-deterministic clock/randomness is forbidden in decision cores (Doc 11 R-063, Doc 32 §CRS). Inject a ClockPort / seeded source.
+java.lang.System#currentTimeMillis()
+java.lang.System#nanoTime()
+java.util.Random#<init>()
+java.lang.Math#random()
+# M2 fix: additional ambient non-deterministic sources (identity + wall-clock reads).
+java.util.UUID#randomUUID()
+java.util.concurrent.ThreadLocalRandom#current()
+java.time.Instant#now()
+java.time.LocalDateTime#now()
+java.time.LocalDate#now()
+java.time.LocalTime#now()
+java.time.OffsetDateTime#now()
+java.time.ZonedDateTime#now()
+java.time.Clock#systemUTC()
+java.time.Clock#systemDefaultZone()
+java.time.Clock#system(java.time.ZoneId)
+
+@defaultMessage Mutable Date/Calendar are forbidden; use immutable java.time (Doc 11 R-005).
+java.util.Date
+java.util.Calendar
+
+@defaultMessage Printing to stdout/stderr is forbidden; use structured logging (Doc 14).
+java.lang.System#out
+java.lang.System#err

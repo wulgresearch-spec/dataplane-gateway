@@ -1,0 +1,91 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Platform BOM — single source of dependency versions (Doc 10 §7 dependency management).
+  Imports Spring Boot BOM; pins Kafka/Avro/OTel/Micrometer/Testcontainers/ArchUnit (Doc 09).
+-->
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+
+  <parent>
+    <groupId>io.reliabilityai.gateway</groupId>
+    <artifactId>gateway-backend-parent</artifactId>
+    <version>1.0.0-SNAPSHOT</version>
+    <relativePath>../pom.xml</relativePath>
+  </parent>
+
+  <artifactId>gateway-platform-bom</artifactId>
+  <packaging>pom</packaging>
+  <name>Reliability-First AI Gateway :: Platform BOM</name>
+
+  <dependencyManagement>
+    <dependencies>
+      <!-- Spring Boot managed dependencies (Doc 09) -->
+      <dependency>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-dependencies</artifactId>
+        <version>${spring-boot.version}</version>
+        <type>pom</type>
+        <scope>import</scope>
+      </dependency>
+
+      <!-- Internal libs -->
+      <dependency>
+        <groupId>io.reliabilityai.gateway</groupId>
+        <artifactId>gateway-lib-common</artifactId>
+        <version>${project.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>io.reliabilityai.gateway</groupId>
+        <artifactId>gateway-lib-canonical</artifactId>
+        <version>${project.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>io.reliabilityai.gateway</groupId>
+        <artifactId>gateway-lib-ports</artifactId>
+        <version>${project.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>io.reliabilityai.gateway</groupId>
+        <artifactId>gateway-lib-events</artifactId>
+        <version>${project.version}</version>
+      </dependency>
+
+      <!-- Avro (Doc 07 §9) -->
+      <dependency>
+        <groupId>org.apache.avro</groupId>
+        <artifactId>avro</artifactId>
+        <version>${avro.version}</version>
+      </dependency>
+
+      <!-- Observability (Doc 14/27, AD-011) -->
+      <dependency>
+        <groupId>io.micrometer</groupId>
+        <artifactId>micrometer-core</artifactId>
+        <version>${micrometer.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>io.opentelemetry</groupId>
+        <artifactId>opentelemetry-api</artifactId>
+        <version>${opentelemetry.version}</version>
+      </dependency>
+
+      <!-- ArchUnit (Doc 10/11 AU-01..12) -->
+      <dependency>
+        <groupId>com.tngtech.archunit</groupId>
+        <artifactId>archunit-junit5</artifactId>
+        <version>${archunit.version}</version>
+      </dependency>
+
+      <!-- Testcontainers (Doc 15) -->
+      <dependency>
+        <groupId>org.testcontainers</groupId>
+        <artifactId>testcontainers-bom</artifactId>
+        <version>${testcontainers.version}</version>
+        <type>pom</type>
+        <scope>import</scope>
+      </dependency>
+    </dependencies>
+  </dependencyManagement>
+</project>

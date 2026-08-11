@@ -1,0 +1,81 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE module PUBLIC
+    "-//Checkstyle//DTD Checkstyle Configuration 1.3//EN"
+    "https://checkstyle.org/dtds/configuration_1_3.dtd">
+<!--
+  Checkstyle — Reliability-First AI Gateway (Doc 11 Coding Standards).
+  Enforces: no wildcard imports (R-012), package naming (R-013 namespace),
+  javadoc on public api, no star imports, redundant modifiers, immutability hints.
+  Build-fails on any violation (Doc 11 CP-2).
+-->
+<module name="Checker">
+  <property name="severity" value="warning"/>
+  <property name="fileExtensions" value="java"/>
+
+  <module name="LineLength">
+    <property name="max" value="120"/>
+    <property name="ignorePattern" value="^\s*//|^import|^\s*\*"/>
+  </module>
+  <module name="FileTabCharacter"/>
+  <module name="RegexpSingleline">
+    <property name="format" value="\bTODO\b|\bFIXME\b|\bXXX\b"/>
+    <property name="message" value="No TODO/FIXME/XXX in production code (Doc 38 quality rule)."/>
+    <property name="severity" value="error"/>
+  </module>
+
+  <module name="TreeWalker">
+    <!-- Imports -->
+    <module name="AvoidStarImport"/>
+    <module name="RedundantImport"/>
+    <module name="UnusedImports"/>
+    <!--
+      Import order must agree with the formatter, not compete with it. Spotless runs
+      google-java-format over every module, and that layout is: static imports first, one blank
+      line, then non-static imports, each block alphabetical.
+
+      This was previously `ImportOrder` with option="under", which demands the opposite arrangement
+      (statics after non-statics, no blank line). Nothing could satisfy both, so `spotless:apply`
+      and `checkstyle:check` would have undone each other's work indefinitely — 166 of the 166
+      files in this repository that use static imports put them first, because the formatter puts
+      them there.
+
+      `ImportOrder` cannot express this layout at all: with no groups declared it treats every
+      import as one group, so the blank line google-java-format requires between the static and
+      non-static blocks is always "extra separation in import group". `CustomImportOrder` is the
+      module built for it, and the settings below are the ones google_checks.xml itself uses.
+    -->
+    <module name="CustomImportOrder">
+      <property name="customImportOrderRules" value="STATIC###THIRD_PARTY_PACKAGE"/>
+      <property name="separateLineBetweenGroups" value="true"/>
+      <property name="sortImportsInGroupAlphabetically" value="true"/>
+      <property name="tokens" value="IMPORT, STATIC_IMPORT, PACKAGE_DEF"/>
+    </module>
+
+    <!-- Naming (Doc 10 §9 / Doc 11) -->
+    <module name="PackageName">
+      <property name="format" value="^io\.reliabilityai\.gateway(\.[a-z][a-z0-9]*)*$"/>
+    </module>
+    <module name="TypeName"/>
+    <module name="MethodName"/>
+    <module name="ConstantName"/>
+
+    <!-- Immutability / safety hints (Doc 11 R-005/R-009) -->
+    <module name="FinalParameters"/>
+    <module name="RedundantModifier"/>
+    <module name="ModifierOrder"/>
+
+    <!-- Structure -->
+    <module name="NeedBraces"/>
+    <module name="LeftCurly"/>
+    <module name="RightCurly"/>
+    <module name="OneStatementPerLine"/>
+    <module name="EmptyStatement"/>
+    <module name="EqualsHashCode"/>
+    <module name="MissingOverride"/>
+
+    <!-- Javadoc on public API surface (Doc 11 R-013/014 api) -->
+    <module name="JavadocType">
+      <property name="scope" value="public"/>
+    </module>
+  </module>
+</module>

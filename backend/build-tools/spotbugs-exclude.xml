@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  SpotBugs exclusions — Reliability-First AI Gateway.
+  H3 fix: the previous broad filename-glob EI_EXPOSE_REP exclusion over *Context/*Snapshot/*Fact/
+  *Record/*Request/*Response was removed. Our records defensively copy collections into unmodifiable
+  views (verified by CanonicalModelContractTest), and ProviderMeta clones its byte[] on read, so no
+  blanket exposure suppression is needed. Only genuinely generated, non-authored code is excluded.
+-->
+<FindBugsFilter>
+  <!-- Generated Avro classes (Doc 07 §9) — not authored here -->
+  <Match>
+    <Source name="~.*[\\/]generated-sources[\\/].*"/>
+  </Match>
+  <Match>
+    <Package name="~io\.reliabilityai\.gateway\.events\.avro.*"/>
+  </Match>
+</FindBugsFilter>

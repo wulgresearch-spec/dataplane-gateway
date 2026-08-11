@@ -1,0 +1,50 @@
+# CI Pipeline — Reliability-First AI Gateway (Doc 16 CI, Doc 38 §12/§14/§15/§35).
+# Gates from commit 1 (Doc 11 CP-2): format, static analysis, security, unit, ArchUnit, mutation.
+name: ci
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build-and-gate:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 21 (AD-023)
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+          cache: maven
+
+      # Doc 38 §13/§14: build + static analysis + security gates (Spotless, Checkstyle,
+      # Error Prone, SpotBugs, forbidden-apis, Enforcer) + unit/ArchUnit/contract tests — all fail
+      # the build. Runs on every PR and push.
+      - name: Build + static analysis + security gates
+        run: mvn -B -e verify
+
+      # M7 fix: mutation is slow and gave little signal double-building on every PR. Run PIT ONCE,
+      # only on push to main, reusing the compiled tree via the pitest goal (no second full verify).
+      # Doc 38 §16 / Doc 15 §G.1: mutation testing (≥ threshold per module).
+      - name: Mutation testing (main only, Doc 15 §G.1)
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        run: mvn -B -Pmutation org.pitest:pitest-maven:mutationCoverage
+
+      # Doc 33 §CMA / Doc 07 §9: contract + ArchUnit tests are part of `verify` above;
+      # this step surfaces reports.
+      - name: Upload reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-reports
+          path: |
+            backend/**/target/site/
+            backend/**/target/pit-reports/
+            backend/**/target/spotbugs*.xml

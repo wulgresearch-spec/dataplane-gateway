@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  gateway-dp-memory-store-journal — a durable MemoryStorePort adapter (AD-027, closes B22).
+
+  A segmented, append-only, crash-safe storage engine built on the JDK alone. It implements
+  MemoryStorePort and nothing else: no policy, no ranking, no retrieval strategy, no governance, no
+  classification, no TTL decisions. Every one of those belongs to C17 and stays there.
+
+  The dependency direction is one-way and enforced by this file: this module depends on
+  gateway-dp-memory-runtime, and the memory runtime depends on nothing of ours. C17 cannot reference a
+  storage engine even by accident, which is what keeps it storage-neutral.
+-->
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+  <parent>
+    <groupId>io.reliabilityai.gateway</groupId>
+    <artifactId>gateway-backend-parent</artifactId>
+    <version>1.0.0-SNAPSHOT</version>
+    <relativePath>../../../pom.xml</relativePath>
+  </parent>
+  <artifactId>gateway-dp-memory-store-journal</artifactId>
+  <name>Reliability-First AI Gateway :: DP :: Memory Store — Journal Adapter</name>
+  <dependencies>
+    <dependency>
+      <groupId>io.reliabilityai.gateway</groupId>
+      <artifactId>gateway-lib-common</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>io.reliabilityai.gateway</groupId>
+      <artifactId>gateway-lib-canonical</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>io.reliabilityai.gateway</groupId>
+      <artifactId>gateway-lib-ports</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>io.reliabilityai.gateway</groupId>
+      <artifactId>gateway-dp-memory-runtime</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>com.tngtech.archunit</groupId>
+      <artifactId>archunit-junit5</artifactId>
+      <scope>test</scope>
+    </dependency>
+  </dependencies>
+</project>

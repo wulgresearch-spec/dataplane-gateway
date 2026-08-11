@@ -1,0 +1,579 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Reliability-First AI Gateway — Backend Parent POM
+  Governs: Doc 09 (stack), Doc 10 (Maven multi-module §7), Doc 11 (coding + AU-01..12),
+           Doc 16 (build/CI gates), Doc 35 (implementation governance §17).
+  Enforcement-first: every boundary/invariant is a BUILD GATE (Doc 11 CP-2).
+  Java 21 · Virtual Threads · ZGC (AD-023). Namespace io.reliabilityai.gateway (Doc 10 §9).
+-->
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+
+  <groupId>io.reliabilityai.gateway</groupId>
+  <artifactId>gateway-backend-parent</artifactId>
+  <version>1.0.0-SNAPSHOT</version>
+  <packaging>pom</packaging>
+  <name>Reliability-First AI Gateway :: Backend Parent</name>
+  <description>Parent POM: Java 21 toolchain + build-failing enforcement gates (Doc 10/11/16/35).</description>
+
+  <modules>
+    <module>bom</module>
+    <module>libs/gateway-lib-common</module>
+    <module>libs/gateway-lib-canonical</module>
+    <module>libs/gateway-lib-ports</module>
+    <module>libs/gateway-lib-events</module>
+    <!-- P1 Runtime Substrate (Doc 38 P1) -->
+    <module>dataplane/modules/gateway-dp-config-cache</module>
+    <module>dataplane/modules/gateway-dp-secrets-provider</module>
+    <module>dataplane/modules/gateway-dp-observability</module>
+    <module>dataplane/modules/gateway-dp-authn</module>
+    <module>dataplane/modules/gateway-dp-event-publisher</module>
+    <module>dataplane/modules/gateway-dp-router</module>
+    <module>dataplane/modules/gateway-dp-reliability</module>
+    <module>dataplane/modules/gateway-dp-provider-adapter</module>
+    <module>dataplane/modules/gateway-dp-streamguard</module>
+    <module>dataplane/modules/gateway-dp-schemalock</module>
+    <module>dataplane/modules/gateway-dp-metering</module>
+    <module>dataplane/modules/gateway-dp-cost</module>
+    <module>dataplane/modules/gateway-dp-governance-engine</module>
+    <module>dataplane/modules/gateway-dp-ingress</module>
+    <module>dataplane/modules/gateway-dp-auth-jwt</module>
+    <module>dataplane/modules/gateway-dp-schema-validator</module>
+    <!-- Sandboxed Plugin Runtime (AD-004, Doc 28): C12's data-plane presence, additive-only -->
+    <module>dataplane/modules/gateway-dp-plugin-runtime</module>
+    <!-- Agent Runtime (AD-025): C14, the durable orchestrator above the tool session layer -->
+    <module>dataplane/modules/gateway-dp-agent-runtime</module>
+    <!-- Memory Runtime (AD-026): C17, the provider-neutral, policy-enforcing memory plane -->
+    <module>dataplane/modules/gateway-dp-memory-runtime</module>
+    <!-- Durable MemoryStorePort adapter (AD-027): vendor-specific code lives here, never in C17 -->
+    <module>dataplane/modules/gateway-dp-memory-store-journal</module>
+    <module>dataplane/modules/gateway-dp-memory-crypto</module>
+    <module>dataplane/modules/gateway-dp-memory-pii</module>
+    <!-- Embedding generation (AD-030): the provider-neutral layer under C17. Generation only, no index -->
+    <module>dataplane/modules/gateway-dp-embedding</module>
+    <!-- Provider adapters (AD-002/AD-007): one module per provider, zero downstream diff -->
+    <module>dataplane/providers/gateway-provider-openai</module>
+    <!-- Single data-plane deployable (AD-020): composition + non-bypass startup validation -->
+    <module>dataplane/gateway-dp-app</module>
+  </modules>
+
+  <properties>
+    <java.version>21</java.version>
+    <maven.compiler.release>21</maven.compiler.release>
+    <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+    <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
+
+    <!-- Plugin/tool versions (pinned; Doc 09/16) -->
+    <spring-boot.version>3.3.4</spring-boot.version>
+    <archunit.version>1.3.0</archunit.version>
+    <junit.version>5.11.0</junit.version>
+    <mockito.version>5.13.0</mockito.version>
+    <testcontainers.version>1.20.1</testcontainers.version>
+    <avro.version>1.11.3</avro.version>
+    <micrometer.version>1.13.4</micrometer.version>
+    <opentelemetry.version>1.42.1</opentelemetry.version>
+
+    <spotless.version>2.43.0</spotless.version>
+    <checkstyle.plugin.version>3.5.0</checkstyle.plugin.version>
+    <checkstyle.version>10.18.1</checkstyle.version>
+    <spotbugs.version>4.8.6.2</spotbugs.version>
+    <spotbugs-annotations.version>4.8.6</spotbugs-annotations.version>
+    <errorprone.version>2.31.0</errorprone.version>
+    <enforcer.version>3.5.0</enforcer.version>
+    <forbiddenapis.version>3.8</forbiddenapis.version>
+    <pitest.version>1.16.3</pitest.version>
+    <pitest.junit5.version>1.2.1</pitest.junit5.version>
+    <jacoco.version>0.8.12</jacoco.version>
+
+    <!-- Doc 15 §G.1: critical modules ≥85% mutation; security/accounting-critical ≥90% (overridden per-module) -->
+    <mutation.threshold>85</mutation.threshold>
+    <build-tools.dir>${maven.multiModuleProjectDirectory}/build-tools</build-tools.dir>
+
+    <!-- L1: reproducible builds (Doc 16) — stable jar timestamps -->
+    <project.build.outputTimestamp>2026-07-22T00:00:00Z</project.build.outputTimestamp>
+  </properties>
+
+  <!--
+    M6 fix: dependency management lives in the PARENT (not imported from a child BOM).
+    The parent no longer imports gateway-platform-bom (its own reactor submodule), removing the
+    clean-build bootstrap fragility. gateway-platform-bom remains a published aggregator for
+    EXTERNAL consumers (SDKs) and inherits this same management via the parent.
+  -->
+  <dependencyManagement>
+    <dependencies>
+      <dependency>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-dependencies</artifactId>
+        <version>${spring-boot.version}</version>
+        <type>pom</type>
+        <scope>import</scope>
+      </dependency>
+      <dependency>
+        <groupId>org.testcontainers</groupId>
+        <artifactId>testcontainers-bom</artifactId>
+        <version>${testcontainers.version}</version>
+        <type>pom</type>
+        <scope>import</scope>
+      </dependency>
+
+      <!-- Internal libs -->
+      <dependency>
+        <groupId>io.reliabilityai.gateway</groupId>
+        <artifactId>gateway-lib-common</artifactId>
+        <version>${project.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>io.reliabilityai.gateway</groupId>
+        <artifactId>gateway-lib-canonical</artifactId>
+        <version>${project.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>io.reliabilityai.gateway</groupId>
+        <artifactId>gateway-lib-ports</artifactId>
+        <version>${project.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>io.reliabilityai.gateway</groupId>
+        <artifactId>gateway-lib-events</artifactId>
+        <version>${project.version}</version>
+      </dependency>
+
+      <!--
+        Internal data-plane modules. Managed here so the composition root (gateway-dp-app) can depend
+        on them without repeating a version; the app ring is the only module allowed to fan out across
+        all of them (AD-020).
+      -->
+      <dependency>
+        <groupId>io.reliabilityai.gateway</groupId>
+        <artifactId>gateway-dp-config-cache</artifactId>
+        <version>${project.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>io.reliabilityai.gateway</groupId>
+        <artifactId>gateway-dp-secrets-provider</artifactId>
+        <version>${project.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>io.reliabilityai.gateway</groupId>
+        <artifactId>gateway-dp-observability</artifactId>
+        <version>${project.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>io.reliabilityai.gateway</groupId>
+        <artifactId>gateway-dp-authn</artifactId>
+        <version>${project.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>io.reliabilityai.gateway</groupId>
+        <artifactId>gateway-dp-event-publisher</artifactId>
+        <version>${project.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>io.reliabilityai.gateway</groupId>
+        <artifactId>gateway-dp-router</artifactId>
+        <version>${project.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>io.reliabilityai.gateway</groupId>
+        <artifactId>gateway-dp-reliability</artifactId>
+        <version>${project.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>io.reliabilityai.gateway</groupId>
+        <artifactId>gateway-dp-provider-adapter</artifactId>
+        <version>${project.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>io.reliabilityai.gateway</groupId>
+        <artifactId>gateway-dp-streamguard</artifactId>
+        <version>${project.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>io.reliabilityai.gateway</groupId>
+        <artifactId>gateway-dp-schemalock</artifactId>
+        <version>${project.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>io.reliabilityai.gateway</groupId>
+        <artifactId>gateway-dp-metering</artifactId>
+        <version>${project.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>io.reliabilityai.gateway</groupId>
+        <artifactId>gateway-dp-cost</artifactId>
+        <version>${project.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>io.reliabilityai.gateway</groupId>
+        <artifactId>gateway-dp-governance-engine</artifactId>
+        <version>${project.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>io.reliabilityai.gateway</groupId>
+        <artifactId>gateway-dp-ingress</artifactId>
+        <version>${project.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>io.reliabilityai.gateway</groupId>
+        <artifactId>gateway-dp-auth-jwt</artifactId>
+        <version>${project.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>io.reliabilityai.gateway</groupId>
+        <artifactId>gateway-dp-schema-validator</artifactId>
+        <version>${project.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>io.reliabilityai.gateway</groupId>
+        <artifactId>gateway-dp-plugin-runtime</artifactId>
+        <version>${project.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>io.reliabilityai.gateway</groupId>
+        <artifactId>gateway-dp-agent-runtime</artifactId>
+        <version>${project.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>io.reliabilityai.gateway</groupId>
+        <artifactId>gateway-dp-memory-runtime</artifactId>
+        <version>${project.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>io.reliabilityai.gateway</groupId>
+        <artifactId>gateway-dp-memory-store-journal</artifactId>
+        <version>${project.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>io.reliabilityai.gateway</groupId>
+        <artifactId>gateway-dp-memory-crypto</artifactId>
+        <version>${project.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>io.reliabilityai.gateway</groupId>
+        <artifactId>gateway-dp-memory-pii</artifactId>
+        <version>${project.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>io.reliabilityai.gateway</groupId>
+        <artifactId>gateway-dp-embedding</artifactId>
+        <version>${project.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>io.reliabilityai.gateway</groupId>
+        <artifactId>gateway-provider-openai</artifactId>
+        <version>${project.version}</version>
+      </dependency>
+
+      <dependency>
+        <groupId>org.apache.avro</groupId>
+        <artifactId>avro</artifactId>
+        <version>${avro.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>io.micrometer</groupId>
+        <artifactId>micrometer-core</artifactId>
+        <version>${micrometer.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>io.opentelemetry</groupId>
+        <artifactId>opentelemetry-api</artifactId>
+        <version>${opentelemetry.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>com.tngtech.archunit</groupId>
+        <artifactId>archunit-junit5</artifactId>
+        <version>${archunit.version}</version>
+      </dependency>
+      <!--
+        SpotBugs annotations, provided-scope only: compile-time metadata that never ships in a jar.
+        Used for exactly one documented exception (GatewayRuntimeConfig.masterKey) where a defensive
+        copy would defeat key zeroization. Not a general licence to suppress EI_EXPOSE_REP.
+      -->
+      <dependency>
+        <groupId>com.github.spotbugs</groupId>
+        <artifactId>spotbugs-annotations</artifactId>
+        <version>${spotbugs-annotations.version}</version>
+        <scope>provided</scope>
+      </dependency>
+    </dependencies>
+  </dependencyManagement>
+
+  <dependencies>
+    <!-- Test stack available to every module (Doc 15) -->
+    <dependency>
+      <groupId>org.junit.jupiter</groupId>
+      <artifactId>junit-jupiter</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.mockito</groupId>
+      <artifactId>mockito-junit-jupiter</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.assertj</groupId>
+      <artifactId>assertj-core</artifactId>
+      <scope>test</scope>
+    </dependency>
+  </dependencies>
+
+  <build>
+    <pluginManagement>
+      <plugins>
+        <plugin>
+          <groupId>org.apache.maven.plugins</groupId>
+          <artifactId>maven-compiler-plugin</artifactId>
+          <version>3.13.0</version>
+        </plugin>
+      </plugins>
+    </pluginManagement>
+
+    <plugins>
+      <!-- Compiler: Java 21 + Error Prone (Doc 11) -->
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-compiler-plugin</artifactId>
+        <configuration>
+          <release>${java.version}</release>
+          <parameters>true</parameters>
+          <showWarnings>true</showWarnings>
+          <failOnWarning>false</failOnWarning>
+          <!--
+            C1 fix: Error Prone requires a forked javac with the JDK compiler internals opened on
+            JDK 16+. Without <fork>true</fork> plus the add-exports/add-opens compiler args below,
+            `mvn compile`
+            fails with IllegalAccessError on JDK 21. This is Error Prone's mandated JDK 16+ config.
+          -->
+          <fork>true</fork>
+          <compilerArgs>
+            <arg>-XDcompilePolicy=simple</arg>
+            <arg>-Xplugin:ErrorProne</arg>
+            <arg>--should-stop=ifError=FLOW</arg>
+            <arg>-J--add-exports=jdk.compiler/com.sun.tools.javac.api=ALL-UNNAMED</arg>
+            <arg>-J--add-exports=jdk.compiler/com.sun.tools.javac.file=ALL-UNNAMED</arg>
+            <arg>-J--add-exports=jdk.compiler/com.sun.tools.javac.main=ALL-UNNAMED</arg>
+            <arg>-J--add-exports=jdk.compiler/com.sun.tools.javac.model=ALL-UNNAMED</arg>
+            <arg>-J--add-exports=jdk.compiler/com.sun.tools.javac.parser=ALL-UNNAMED</arg>
+            <arg>-J--add-exports=jdk.compiler/com.sun.tools.javac.processing=ALL-UNNAMED</arg>
+            <arg>-J--add-exports=jdk.compiler/com.sun.tools.javac.tree=ALL-UNNAMED</arg>
+            <arg>-J--add-exports=jdk.compiler/com.sun.tools.javac.util=ALL-UNNAMED</arg>
+            <arg>-J--add-opens=jdk.compiler/com.sun.tools.javac.code=ALL-UNNAMED</arg>
+            <arg>-J--add-opens=jdk.compiler/com.sun.tools.javac.comp=ALL-UNNAMED</arg>
+          </compilerArgs>
+          <annotationProcessorPaths>
+            <path>
+              <groupId>com.google.errorprone</groupId>
+              <artifactId>error_prone_core</artifactId>
+              <version>${errorprone.version}</version>
+            </path>
+          </annotationProcessorPaths>
+        </configuration>
+      </plugin>
+
+      <!-- Spotless: single formatter; build-fails on unformatted (Doc 11 R-012) -->
+      <plugin>
+        <groupId>com.diffplug.spotless</groupId>
+        <artifactId>spotless-maven-plugin</artifactId>
+        <version>${spotless.version}</version>
+        <configuration>
+          <!--
+            H2 fix: google-java-format reflects into jdk.compiler internals; on JDK 16+ Spotless
+            must fork a JVM with these opens or `spotless:check` fails to run. Formatting is a
+            mechanical, non-semantic normalization; a one-time `mvn spotless:apply` normalizes the
+            tree, after which `spotless:check` (bound to validate) stays green.
+          -->
+          <java>
+            <googleJavaFormat>
+              <version>1.23.0</version>
+              <style>GOOGLE</style>
+            </googleJavaFormat>
+            <removeUnusedImports/>
+            <importOrder/>
+            <trimTrailingWhitespace/>
+            <endWithNewline/>
+          </java>
+        </configuration>
+        <executions>
+          <execution>
+            <id>spotless-check</id>
+            <phase>validate</phase>
+            <goals><goal>check</goal></goals>
+          </execution>
+        </executions>
+      </plugin>
+
+      <!-- Checkstyle: build-fails on style violations (Doc 11) -->
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-checkstyle-plugin</artifactId>
+        <version>${checkstyle.plugin.version}</version>
+        <dependencies>
+          <dependency>
+            <groupId>com.puppycrawl.tools</groupId>
+            <artifactId>checkstyle</artifactId>
+            <version>${checkstyle.version}</version>
+          </dependency>
+        </dependencies>
+        <configuration>
+          <configLocation>${build-tools.dir}/checkstyle.xml</configLocation>
+          <consoleOutput>true</consoleOutput>
+          <failsOnError>true</failsOnError>
+          <violationSeverity>warning</violationSeverity>
+          <includeTestSourceDirectory>true</includeTestSourceDirectory>
+        </configuration>
+        <executions>
+          <execution>
+            <id>checkstyle-validate</id>
+            <phase>validate</phase>
+            <goals><goal>check</goal></goals>
+          </execution>
+        </executions>
+      </plugin>
+
+      <!-- SpotBugs: immutability/thread-safety (Doc 11 R-005/R-049); build-fails -->
+      <plugin>
+        <groupId>com.github.spotbugs</groupId>
+        <artifactId>spotbugs-maven-plugin</artifactId>
+        <version>${spotbugs.version}</version>
+        <configuration>
+          <effort>Max</effort>
+          <threshold>Low</threshold>
+          <failOnError>true</failOnError>
+          <excludeFilterFile>${build-tools.dir}/spotbugs-exclude.xml</excludeFilterFile>
+        </configuration>
+        <executions>
+          <execution>
+            <id>spotbugs-check</id>
+            <phase>verify</phase>
+            <goals><goal>check</goal></goals>
+          </execution>
+        </executions>
+      </plugin>
+
+      <!-- Forbidden APIs: no online-IdP/JDK-unsafe patterns; custom signatures (Doc 37 IAU-A4, Doc 11) -->
+      <plugin>
+        <groupId>de.thetaphi</groupId>
+        <artifactId>forbiddenapis</artifactId>
+        <version>${forbiddenapis.version}</version>
+        <configuration>
+          <failOnUnsupportedJava>false</failOnUnsupportedJava>
+          <bundledSignatures>
+            <bundledSignature>jdk-unsafe</bundledSignature>
+            <bundledSignature>jdk-deprecated</bundledSignature>
+            <bundledSignature>jdk-non-portable</bundledSignature>
+          </bundledSignatures>
+          <signaturesFiles>
+            <signaturesFile>${build-tools.dir}/forbidden-signatures.txt</signaturesFile>
+          </signaturesFiles>
+        </configuration>
+        <executions>
+          <execution>
+            <id>forbidden-check</id>
+            <phase>verify</phase>
+            <goals><goal>check</goal><goal>testCheck</goal></goals>
+          </execution>
+        </executions>
+      </plugin>
+
+      <!-- Enforcer: convergence, no snapshots at release, Java version (Doc 35 §17) -->
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-enforcer-plugin</artifactId>
+        <version>${enforcer.version}</version>
+        <executions>
+          <execution>
+            <id>enforce-rules</id>
+            <phase>validate</phase>
+            <goals><goal>enforce</goal></goals>
+            <configuration>
+             <rules>
+    <requireJavaVersion><version>[21,)</version></requireJavaVersion>
+    <requireMavenVersion><version>[3.9,)</version></requireMavenVersion>
+    <dependencyConvergence/>
+    <banDuplicatePomDependencyVersions/>
+</rules>
+              <fail>true</fail>
+            </configuration>
+          </execution>
+        </executions>
+      </plugin>
+
+      <!-- Surefire (unit) -->
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-surefire-plugin</artifactId>
+        <version>3.5.0</version>
+        <configuration>
+          <includes>
+            <include>**/*Test.java</include>
+            <include>**/*Tests.java</include>
+          </includes>
+          <excludes>
+            <exclude>**/*IT.java</exclude>
+          </excludes>
+        </configuration>
+      </plugin>
+
+      <!-- Failsafe (integration, Testcontainers; Doc 15) -->
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-failsafe-plugin</artifactId>
+        <version>3.5.0</version>
+        <configuration>
+          <includes><include>**/*IT.java</include></includes>
+        </configuration>
+        <executions>
+          <execution>
+            <goals><goal>integration-test</goal><goal>verify</goal></goals>
+          </execution>
+        </executions>
+      </plugin>
+
+      <!-- JaCoCo coverage -->
+      <plugin>
+        <groupId>org.jacoco</groupId>
+        <artifactId>jacoco-maven-plugin</artifactId>
+        <version>${jacoco.version}</version>
+        <executions>
+          <execution><id>prepare</id><goals><goal>prepare-agent</goal></goals></execution>
+          <execution><id>report</id><phase>verify</phase><goals><goal>report</goal></goals></execution>
+        </executions>
+      </plugin>
+    </plugins>
+  </build>
+
+  <profiles>
+    <!-- Mutation testing (PITest, Doc 15 §G.1). Run: mvn -Pmutation verify -->
+    <profile>
+      <id>mutation</id>
+      <build>
+        <plugins>
+          <plugin>
+            <groupId>org.pitest</groupId>
+            <artifactId>pitest-maven</artifactId>
+            <version>${pitest.version}</version>
+            <dependencies>
+              <dependency>
+                <groupId>org.pitest</groupId>
+                <artifactId>pitest-junit5-plugin</artifactId>
+                <version>${pitest.junit5.version}</version>
+              </dependency>
+            </dependencies>
+            <configuration>
+              <targetClasses><param>io.reliabilityai.gateway.*</param></targetClasses>
+              <targetTests><param>io.reliabilityai.gateway.*</param></targetTests>
+              <mutationThreshold>${mutation.threshold}</mutationThreshold>
+              <failWhenNoMutations>false</failWhenNoMutations>
+              <outputFormats><param>HTML</param><param>XML</param></outputFormats>
+            </configuration>
+            <executions>
+              <execution><id>pitest</id><phase>verify</phase><goals><goal>mutationCoverage</goal></goals></execution>
+            </executions>
+          </plugin>
+        </plugins>
+      </build>
+    </profile>
+  </profiles>
+</project>

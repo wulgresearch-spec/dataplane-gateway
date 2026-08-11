@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  gateway-dp-agent-runtime — the Agent Runtime (C14, AD-025).
+
+  A durable, plan-driven, supervised orchestrator that sits ABOVE the Tool Session Orchestrator (C13),
+  which itself sits above RequestPipeline. It owns runs, history, replay, supervision and bounds. It
+  owns no inference, no tools, no policy and no billing.
+
+  Deliberately depends on NOTHING but the shared libs. It has no dependency on gateway-dp-app, on the
+  plugin runtime, or on any provider module — every outbound edge is a port, and the adapters live in
+  the composition root. That absence is what makes AD-025 AGT-1/AGT-2/AGT-4 structural rather than a
+  convention: this module cannot reach a provider, a pipeline or a plugin even by accident.
+-->
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+  <parent>
+    <groupId>io.reliabilityai.gateway</groupId>
+    <artifactId>gateway-backend-parent</artifactId>
+    <version>1.0.0-SNAPSHOT</version>
+    <relativePath>../../../pom.xml</relativePath>
+  </parent>
+  <artifactId>gateway-dp-agent-runtime</artifactId>
+  <name>Reliability-First AI Gateway :: DP :: Agent Runtime (C14)</name>
+  <dependencies>
+    <dependency>
+      <groupId>io.reliabilityai.gateway</groupId>
+      <artifactId>gateway-lib-common</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>io.reliabilityai.gateway</groupId>
+      <artifactId>gateway-lib-canonical</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>io.reliabilityai.gateway</groupId>
+      <artifactId>gateway-lib-ports</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>com.tngtech.archunit</groupId>
+      <artifactId>archunit-junit5</artifactId>
+      <scope>test</scope>
+    </dependency>
+  </dependencies>
+</project>

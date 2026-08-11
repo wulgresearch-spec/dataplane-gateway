@@ -1,0 +1,15 @@
+{
+  "type": "record",
+  "name": "EventEnvelope",
+  "namespace": "io.reliabilityai.gateway.events.avro",
+  "doc": "Standard event envelope (Doc 07 §6). Content-free metadata; backward-compatible evolution within a major (Doc 07 §9, Doc 16 D-033). New fields must be optional with a default.",
+  "fields": [
+    { "name": "eventId", "type": "string", "doc": "Globally-unique event id (idempotency/dedup anchor, Doc 07 §13)." },
+    { "name": "eventType", "type": "string", "doc": "Topic-family qualified event type." },
+    { "name": "correlationId", "type": "string", "doc": "Correlation id threading the request (Doc 27 §9)." },
+    { "name": "causationId", "type": "string", "doc": "Causation id of the triggering event/command (Doc 07 §6)." },
+    { "name": "occurredAtEpochMillis", "type": "long", "doc": "Occurrence time in epoch millis (UTC)." },
+    { "name": "schemaVersion", "type": "int", "default": 1, "doc": "Payload schema major version (Doc 07 §9)." },
+    { "name": "tenantScopeToken", "type": ["null", "string"], "default": null, "doc": "Residency-safe tenant scope token; id-only across regions (Doc 27 §10.1). Null before C6 (Doc 32 §SPT)." }
+  ]
+}
