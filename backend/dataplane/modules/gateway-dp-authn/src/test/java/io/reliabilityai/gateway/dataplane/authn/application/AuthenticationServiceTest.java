@@ -117,6 +117,12 @@ class AuthenticationServiceTest {
         new VerificationOutcome.Rejected(AuthenticationFailureReason.INVALID_SIGNATURE);
     assertUnauthenticated(service.authenticate(TRANSPORT, REQUEST), "invalid-signature");
     assertThat(tenants.reads).isZero(); // tenant scope resolved ONLY after auth (SPT)
+    // The denial must also be counted, with its reason. Returning Unauthenticated while emitting
+    // nothing would make a rejection invisible to operators — a brute-force run against this
+    // gateway would look exactly like an idle one.
+    assertThat(metrics.unauthenticated).isEqualTo(1);
+    assertThat(metrics.lastUnauthenticatedReason).isEqualTo("invalid-signature");
+    assertThat(metrics.authenticated).isZero();
   }
 
   @Test
@@ -157,6 +163,11 @@ class AuthenticationServiceTest {
     keys.value = keySnapshot(REGION);
     verifier.throwOnVerify = true; // a raw provider/IdP exception must not escape
     assertUnauthenticated(service.authenticate(TRANSPORT, REQUEST), "internal-error");
+    // The catch-all fail-closed path emits its own metric. This is a different emission site from
+    // the ordinary deny() path, and it is the one that fires when the IdP or verifier is broken —
+    // precisely the incident an operator most needs to see counted.
+    assertThat(metrics.unauthenticated).isEqualTo(1);
+    assertThat(metrics.lastUnauthenticatedReason).isEqualTo("internal-error");
   }
 
   @Test
@@ -250,6 +261,10 @@ class AuthenticationServiceTest {
   private static final class CountingMetrics implements AuthMetricsPort {
     private int authenticated;
     private int tenantResolved;
+    // A denial that is not counted is a denial nobody can alert on: credential stuffing and key
+    // rotation faults both surface first as a rise in this counter, so the reason is recorded too.
+    private int unauthenticated;
+    private String lastUnauthenticatedReason;
     private boolean throwing;
 
     @Override
@@ -265,6 +280,8 @@ class AuthenticationServiceTest {
       if (throwing) {
         throw new IllegalStateException("metrics down");
       }
+      unauthenticated++;
+      lastUnauthenticatedReason = reason;
     }
 
     @Override

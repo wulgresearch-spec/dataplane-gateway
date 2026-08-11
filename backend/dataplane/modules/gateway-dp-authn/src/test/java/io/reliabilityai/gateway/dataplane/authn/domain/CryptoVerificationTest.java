@@ -40,6 +40,28 @@ class CryptoVerificationTest {
   }
 
   @Test
+  void failsClosedOnNullSigningInputOrSignature() throws Exception {
+    // The null guard is the one branch of verify() no test reached, and it is the branch where
+    // getting it wrong is worst: returning true here would authenticate a request that carried no
+    // signature at all. Asserted for both arguments, and for a valid key, so the false can only
+    // come from the guard rather than from a rejected signature.
+    final KeyPairGenerator gen = KeyPairGenerator.getInstance("RSA");
+    gen.initialize(2048);
+    final PublicKey key = gen.generateKeyPair().getPublic();
+    final byte[] present = "header.payload".getBytes(StandardCharsets.US_ASCII);
+
+    assertThat(verifier.verify(JwsAlgorithm.RS256, key, null, present)).isFalse();
+    assertThat(verifier.verify(JwsAlgorithm.RS256, key, present, null)).isFalse();
+    assertThat(verifier.verify(JwsAlgorithm.RS256, key, null, null)).isFalse();
+
+    // The algorithm and key remain mandatory rather than silently ignored.
+    assertThatThrownBy(() -> verifier.verify(null, key, present, present))
+        .isInstanceOf(NullPointerException.class);
+    assertThatThrownBy(() -> verifier.verify(JwsAlgorithm.RS256, null, present, present))
+        .isInstanceOf(NullPointerException.class);
+  }
+
+  @Test
   void rs256RoundTripVerifiesAndRejectsTampering() throws Exception {
     final KeyPairGenerator gen = KeyPairGenerator.getInstance("RSA");
     gen.initialize(2048);
