@@ -215,6 +215,98 @@ class GovernanceEvaluatorTest {
   }
 
   @Test
+  void unauthorizedToolIsDenied() {
+    // The tools loop had no coverage at all: every existing request asks for no tools, so the
+    // branch that refuses a tool outside the allow-list never executed. Negating it would admit
+    // any tool the tenant is not permitted to invoke.
+    final GovernanceRequest wantsUnlistedTool = withTools(Set.of("shell-exec"));
+
+    final Decision decision =
+        evaluate(
+            wantsUnlistedTool,
+            Optional.of(GovernanceFixture.policy()),
+            Optional.of(GovernanceFixture.entitlement()),
+            Optional.of(GovernanceFixture.usage()));
+
+    assertThat(decision).isInstanceOf(Decision.Deny.class);
+    assertThat(((Decision.Deny) decision).reason()).isEqualTo(DenialReason.TOOL_UNAUTHORIZED);
+  }
+
+  @Test
+  void permittedToolIsAdmitted() {
+    // The other side of the same branch: "search" is on the allow-list and must pass, so the
+    // refusal above is proven to be selective rather than a blanket rejection of every tool.
+    final Decision decision =
+        evaluate(
+            withTools(Set.of("search")),
+            Optional.of(GovernanceFixture.policy()),
+            Optional.of(GovernanceFixture.entitlement()),
+            Optional.of(GovernanceFixture.usage()));
+
+    assertThat(decision).isInstanceOf(Decision.Permit.class);
+  }
+
+  @Test
+  void unattestedComplianceRegimeIsDenied() {
+    // The compliance predicate was exercised, but only ever with an attested regime, so the deny
+    // itself never ran. A tenant attested for SOC2/GDPR must not satisfy a HIPAA requirement.
+    final Decision decision =
+        evaluate(
+            withComplianceRegimes(Set.of("HIPAA")),
+            Optional.of(GovernanceFixture.policy()),
+            Optional.of(GovernanceFixture.entitlement()),
+            Optional.of(GovernanceFixture.usage()));
+
+    assertThat(decision).isInstanceOf(Decision.Deny.class);
+    assertThat(((Decision.Deny) decision).reason()).isEqualTo(DenialReason.COMPLIANCE_CONFLICT);
+  }
+
+  @Test
+  void gatedFeatureExplicitlyDisabledIsDenied() {
+    // gatedFeatureWithAbsentFlagFailsSafeToDisabled covers only the absent half of
+    // `state.isEmpty() || !state.orElseThrow()`. The present-and-false half — a flag an operator
+    // has deliberately switched off, which is the ordinary production case — never ran.
+    final Decision decision =
+        evaluator.evaluate(
+            withFeatures(Set.of("beta-feature")),
+            Optional.of(GovernanceFixture.policy()),
+            Optional.of(GovernanceFixture.entitlement()),
+            Optional.of(GovernanceFixture.usage()),
+            Map.of("beta-feature", Optional.of(false)), // present, and explicitly off
+            GovernanceFixture.NOW);
+
+    assertThat(decision).isInstanceOf(Decision.Deny.class);
+    assertThat(((Decision.Deny) decision).reason()).isEqualTo(DenialReason.FEATURE_DISABLED);
+  }
+
+  @Test
+  void spendLandingExactlyOnTheBudgetCeilingIsAdmitted() {
+    // The source states the rule: "Strictly greater-than: a request landing exactly on the ceiling
+    // is still within budget." Nothing tested it, so `>` drifting to `>=` would silently refuse
+    // every request that consumes the last available micro of an otherwise valid budget.
+    final Entitlement limits = GovernanceFixture.entitlement();
+    final UsageState spent = new UsageState(10L, 5_000L, GovernanceFixture.NOW);
+    final long exactlyRemaining = limits.budgetLimitMicros() - spent.spentMicros();
+
+    final Decision atCeiling =
+        evaluate(
+            withProjectedSpend(exactlyRemaining),
+            Optional.of(GovernanceFixture.policy()),
+            Optional.of(limits),
+            Optional.of(spent));
+    assertThat(atCeiling).isInstanceOf(Decision.Permit.class);
+
+    // One micro beyond it must refuse, so the boundary is pinned from both sides.
+    final Decision overCeiling =
+        evaluate(
+            withProjectedSpend(exactlyRemaining + 1L),
+            Optional.of(GovernanceFixture.policy()),
+            Optional.of(limits),
+            Optional.of(spent));
+    assertThat(((Decision.Deny) overCeiling).reason()).isEqualTo(DenialReason.BUDGET_EXCEEDED);
+  }
+
+  @Test
   void usageReadingStaleBeyondToleranceDeniesRatherThanAdmittingUnboundedSpend() {
     final UsageState stale = new UsageState(10L, 5_000L, GovernanceFixture.NOW.minusSeconds(3_600));
 
@@ -366,6 +458,51 @@ class GovernanceEvaluatorTest {
         base.requiredComplianceRegimes(),
         base.requestedFeatures(),
         base.projectedSpendMicros());
+  }
+
+  private static GovernanceRequest withTools(final Set<String> tools) {
+    final GovernanceRequest base = GovernanceFixture.request();
+    return new GovernanceRequest(
+        base.requestContext(),
+        base.principal(),
+        base.tenant(),
+        base.requestedModel(),
+        base.requestedRegion(),
+        base.requestedCapabilities(),
+        tools,
+        base.requiredComplianceRegimes(),
+        base.requestedFeatures(),
+        base.projectedSpendMicros());
+  }
+
+  private static GovernanceRequest withComplianceRegimes(final Set<String> regimes) {
+    final GovernanceRequest base = GovernanceFixture.request();
+    return new GovernanceRequest(
+        base.requestContext(),
+        base.principal(),
+        base.tenant(),
+        base.requestedModel(),
+        base.requestedRegion(),
+        base.requestedCapabilities(),
+        base.requestedTools(),
+        regimes,
+        base.requestedFeatures(),
+        base.projectedSpendMicros());
+  }
+
+  private static GovernanceRequest withProjectedSpend(final long projectedSpendMicros) {
+    final GovernanceRequest base = GovernanceFixture.request();
+    return new GovernanceRequest(
+        base.requestContext(),
+        base.principal(),
+        base.tenant(),
+        base.requestedModel(),
+        base.requestedRegion(),
+        base.requestedCapabilities(),
+        base.requestedTools(),
+        base.requiredComplianceRegimes(),
+        base.requestedFeatures(),
+        projectedSpendMicros);
   }
 
   private static GovernanceRequest withFeatures(final Set<String> features) {

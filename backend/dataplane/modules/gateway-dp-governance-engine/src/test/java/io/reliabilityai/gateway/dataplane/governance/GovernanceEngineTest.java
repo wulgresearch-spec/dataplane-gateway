@@ -94,6 +94,66 @@ class GovernanceEngineTest {
   }
 
   @Test
+  void aGenerationThatIsNotNewerIsRefusedAndCounted() {
+    // install() reports whether the generation actually took force. Nothing asserted the refusal
+    // path, so a replayed or out-of-order snapshot could have reported success and left operators
+    // believing a policy change had landed when the older generation was still serving.
+    assertThat(registry.install(snapshot(2L, document(GLOBAL, 2L)))).isTrue();
+    assertThat(registry.install(snapshot(1L, document(GLOBAL, 1L)))).isFalse();
+
+    assertThat(metrics.rejections()).isEqualTo(1L);
+    assertThat(metrics.installs()).isEqualTo(1L);
+    // The generation in force is still the newer one, not the one that was refused.
+    assertThat(engine().govern(request().build()).verdict()).isEqualTo(Verdict.ALLOW);
+  }
+
+  @Test
+  void admitIsTheAdmissionSeamAndBehavesExactlyAsGovern() {
+    // admit() is the method the request pipeline actually calls through GovernanceAdmissionPort,
+    // and no test called it. Its contract is total — never null, never throwing — so it is asserted
+    // on both an unconfigured node (refuse) and an installed generation (allow), and against
+    // govern() so the two cannot silently diverge.
+    final PolicyRequest unconfigured = request().build();
+    final PolicyDecision refused = engine().admit(unconfigured);
+    assertThat(refused).isNotNull();
+    assertThat(refused.verdict()).isEqualTo(Verdict.DENY);
+    assertThat(refused.reasonCode()).isEqualTo(DenialReason.POLICY_NOT_FOUND.code());
+
+    install(snapshot(1L, document(GLOBAL, 1L)));
+    final PolicyDecision admitted = engine().admit(request().build());
+    assertThat(admitted).isNotNull();
+    assertThat(admitted.verdict()).isEqualTo(Verdict.ALLOW);
+    assertThat(admitted.verdict()).isEqualTo(engine().govern(request().build()).verdict());
+  }
+
+  @Test
+  void aCollaboratorThatThrowsDuringEvaluationRefusesAsPolicyUnavailable() {
+    // The fail-closed catch in decide() had no coverage at all: every existing failure test injects
+    // a port whose exception is absorbed lower down, so nothing ever propagated out of evaluation.
+    // A ticker that throws does propagate — PolicyEvaluator calls ticker.nanos() unguarded — which
+    // exercises the one path that decides what happens when a collaborator tells us nothing about
+    // whether the request is within policy. It must refuse, not admit.
+    install(snapshot(1L, document(GLOBAL, 1L)));
+    final TickerPort brokenTicker =
+        () -> {
+          throw new IllegalStateException("monotonic source unavailable");
+        };
+    final GovernanceEngine broken =
+        new GovernanceEngine(
+            registry, EVALUATOR, FRESH, audited::add, metrics, CLOCK, brokenTicker, null);
+
+    final PolicyDecision decision = broken.govern(request().build());
+
+    assertThat(decision).isNotNull();
+    assertThat(decision.verdict()).isEqualTo(Verdict.DENY);
+    assertThat(decision.reasonCode()).isEqualTo(DenialReason.POLICY_UNAVAILABLE.code());
+    // The refusal is counted and audited like any other, so a broken collaborator is visible
+    // rather than silently degrading into refusals nobody notices.
+    assertThat(metrics.policyUnavailableCount()).isEqualTo(1L);
+    assertThat(audited).hasSize(1);
+  }
+
+  @Test
   void anEmptyButInstalledGenerationIsALegitimateAnswer() {
     install(snapshot(1L, document(GLOBAL, 1L)));
 

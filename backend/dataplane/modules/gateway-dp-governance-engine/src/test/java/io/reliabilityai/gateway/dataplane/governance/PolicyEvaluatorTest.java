@@ -11,6 +11,7 @@ import static io.reliabilityai.gateway.dataplane.governance.PolicyFixture.rule;
 import static io.reliabilityai.gateway.dataplane.governance.PolicyFixture.snapshot;
 import static io.reliabilityai.gateway.dataplane.governance.PolicyFixture.usage;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.junit.jupiter.params.provider.Arguments.arguments;
 
 import io.reliabilityai.gateway.canonical.identity.CanonicalModelId;
 import io.reliabilityai.gateway.canonical.identity.Region;
@@ -35,9 +36,13 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.Optional;
 import java.util.Set;
+import java.util.function.UnaryOperator;
+import java.util.stream.Stream;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.EnumSource;
+import org.junit.jupiter.params.provider.MethodSource;
 
 /**
  * Tests the decision core: every policy type, the verdict ladder, deny-overrides and determinism.
@@ -975,5 +980,69 @@ class PolicyEvaluatorTest {
             rule("a", PolicyType.MODEL_ALLOW_LIST, PolicyValue.Values.of(MODEL.value())));
 
     assertThat(decision.verdict()).isEqualTo(Verdict.DENY);
+  }
+
+  // ---- capability declaration -----------------------------------------------------------------
+
+  @ParameterizedTest
+  @MethodSource("capabilities")
+  void aCapabilityTheRequestNeverAskedForCannotDenyIt(
+      final PolicyType type, final UnaryOperator<PolicyRequest.Builder> declare) {
+    // A capability rule reads "if the request uses this, policy must permit it". Only the
+    // declaring side was tested, so nothing proved a request is judged on what it actually asks
+    // for rather than on every capability the gateway knows about. Both directions are asserted
+    // against the same switched-off rule, so the difference can only come from the declaration.
+    final PolicyRule switchedOff = rule("cap", type, PolicyValue.Flag.FALSE);
+
+    assertThat(decide(declare.apply(request()).build(), switchedOff).verdict())
+        .isEqualTo(Verdict.DENY);
+    assertThat(decide(request().build(), switchedOff).verdict()).isEqualTo(Verdict.ALLOW);
+  }
+
+  private static Stream<Arguments> capabilities() {
+    return Stream.of(
+        arguments(PolicyType.REASONING_ALLOWED, declaring(b -> b.reasoning(true))),
+        arguments(PolicyType.VISION_ALLOWED, declaring(b -> b.vision(true))),
+        arguments(PolicyType.IMAGE_GENERATION_ALLOWED, declaring(b -> b.imageGeneration(true))),
+        arguments(PolicyType.AUDIO_ALLOWED, declaring(b -> b.audio(true))),
+        arguments(PolicyType.EMBEDDING_ALLOWED, declaring(b -> b.embedding(true))),
+        arguments(PolicyType.FINE_TUNING_ALLOWED, declaring(b -> b.fineTuning(true))),
+        arguments(PolicyType.BATCH_ALLOWED, declaring(b -> b.batch(true))));
+  }
+
+  private static UnaryOperator<PolicyRequest.Builder> declaring(
+      final UnaryOperator<PolicyRequest.Builder> declare) {
+    return declare;
+  }
+
+  // ---- provider routing -----------------------------------------------------------------------
+
+  @Test
+  void aProviderAllowListRefusesOnlyWhenNothingTheRequestOffersSurvives() {
+    // Provider lists decide what is left to route to, and no test had ever supplied a candidate
+    // set, so both list evaluations were unexercised. The boundary that matters is "one survivor
+    // is still routable" — refusing there would strand traffic that policy actually permits.
+    final PolicyRule allow =
+        rule("allow", PolicyType.PROVIDER_ALLOW_LIST, PolicyValue.Values.of("openai"));
+
+    assertThat(decide(request().candidateProviders(Set.of("bedrock")).build(), allow).verdict())
+        .isEqualTo(Verdict.DENY);
+    assertThat(
+            decide(request().candidateProviders(Set.of("bedrock", "openai")).build(), allow)
+                .verdict())
+        .isEqualTo(Verdict.ALLOW);
+  }
+
+  @Test
+  void aProviderDenyListRefusesOnlyWhenItRemovesEveryCandidate() {
+    final PolicyRule deny =
+        rule("deny", PolicyType.PROVIDER_DENY_LIST, PolicyValue.Values.of("openai"));
+
+    assertThat(decide(request().candidateProviders(Set.of("openai")).build(), deny).verdict())
+        .isEqualTo(Verdict.DENY);
+    assertThat(
+            decide(request().candidateProviders(Set.of("openai", "bedrock")).build(), deny)
+                .verdict())
+        .isEqualTo(Verdict.ALLOW);
   }
 }
