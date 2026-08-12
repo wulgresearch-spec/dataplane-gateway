@@ -214,6 +214,38 @@ class ProviderRouterServiceTest {
   }
 
   @Test
+  void aSecondOverflowInTheSamePenaltyChainStillRanksThePathologicalCandidateLast() {
+    // There are two subtractions in the penalty chain and only the second can overflow: the first
+    // takes a non-negative preference minus a non-negative cost penalty, which always stays in
+    // range. Once the cost penalty has saturated to MAX the running score sits at MIN+1, and any
+    // latency penalty above one drives it past MIN. The existing overflow test misses that by
+    // exactly one millisecond of expected latency, so the deeper clamp had never run.
+    policyPort.policy = new RoutingPolicy(Long.MAX_VALUE / 2, 1L, 0L, 0.9, Set.of());
+    snapshot(eligible("a", Long.MAX_VALUE, 2), eligible("b", 1L, 1));
+
+    final RoutingResult.Routed routed = (RoutingResult.Routed) router.route(request("c"));
+
+    // Saturating toward the worst score is what keeps ranking monotonic: were the clamp to wrap or
+    // return zero, the absurdly expensive and slower candidate would come out best.
+    assertThat(routed.primary().providerRouteRef()).isEqualTo("route/b");
+    // It is still offered as failover, because arithmetic changes rank and never eligibility.
+    assertThat(routed.failover()).hasSize(1);
+    assertThat(routed.failover().get(0).providerRouteRef()).isEqualTo("route/a");
+  }
+
+  @Test
+  void anOverflowFromTwoEqualOperandsSaturatesTowardTheWorstScore() {
+    // Saturation reads the sign of the true product from the operands. When they are equal that
+    // signal is zero, which is the one case the existing overflow tests never produce because they
+    // use different values. A clamp that treated "equal" as "negative product" would hand the most
+    // expensive candidate the best possible score.
+    policyPort.policy = new RoutingPolicy(4_000_000_000L, 1L, 0L, 0.9, Set.of());
+    snapshot(eligible("a", 4_000_000_000L, 1), eligible("b", 1L, 1));
+
+    assertThat(primaryRoute(router.route(request("c")))).isEqualTo("route/b");
+  }
+
+  @Test
   void rejectsNullRequest() {
     assertThatThrownBy(() -> router.route(null)).isInstanceOf(NullPointerException.class);
   }
