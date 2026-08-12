@@ -211,6 +211,105 @@ class HttpIngressServerTest {
   }
 
   @Test
+  void aBodyOfExactlyTheConfiguredCeilingIsAccepted() throws Exception {
+    // The ceiling is a limit, not a target: the server reads one byte past it to tell "at the
+    // limit" from "over it". A guard that refused the exact size would reject requests the
+    // configuration permits, and the oversize test above cannot detect that on its own.
+    final String prefix = "{\"model\":\"m\",\"messages\":[{\"role\":\"user\",\"content\":\"";
+    final String suffix = "\"}]}";
+    final String body = prefix + "x".repeat(256 - prefix.length() - suffix.length()) + suffix;
+    assertThat(body.getBytes(java.nio.charset.StandardCharsets.UTF_8)).hasSize(256);
+
+    final HttpResponse<String> response =
+        post(HttpIngressServer.PATH_CHAT, body, "application/json");
+
+    assertThat(response.statusCode()).isEqualTo(200);
+    assertThat(handled.get()).isEqualTo(1);
+  }
+
+  @Test
+  void jsonModeIsCarriedOnlyWhenTheClientActuallyAsksForIt() throws Exception {
+    // response_format is a nested, client-supplied shape. Every branch that is not exactly
+    // {"type":"json_object"} must leave the flag off, or the pipeline would be told the caller
+    // demanded structured output when it did not.
+    post(
+        HttpIngressServer.PATH_CHAT,
+        "{\"model\":\"m\",\"messages\":[{\"role\":\"user\",\"content\":\"h\"}],"
+            + "\"response_format\":{\"type\":\"json_object\"}}",
+        "application/json");
+    assertThat(seen.get(0).params()).containsEntry("json_mode", "true");
+
+    seen.clear();
+    // Not an object, wrong type value, and absent: none of these request JSON mode.
+    post(
+        HttpIngressServer.PATH_CHAT,
+        "{\"model\":\"m\",\"messages\":[{\"role\":\"user\",\"content\":\"h\"}],"
+            + "\"response_format\":\"json_object\"}",
+        "application/json");
+    post(
+        HttpIngressServer.PATH_CHAT,
+        "{\"model\":\"m\",\"messages\":[{\"role\":\"user\",\"content\":\"h\"}],"
+            + "\"response_format\":{\"type\":\"text\"}}",
+        "application/json");
+    post(
+        HttpIngressServer.PATH_CHAT,
+        "{\"model\":\"m\",\"messages\":[{\"role\":\"user\",\"content\":\"h\"}]}",
+        "application/json");
+    assertThat(seen)
+        .allSatisfy(request -> assertThat(request.params()).doesNotContainKey("json_mode"));
+  }
+
+  @Test
+  void stopSequencesAreAcceptedAsAStringOrAListAndBlanksAreDropped() throws Exception {
+    post(
+        HttpIngressServer.PATH_CHAT,
+        "{\"model\":\"m\",\"messages\":[{\"role\":\"user\",\"content\":\"h\"}],\"stop\":\"END\"}",
+        "application/json");
+    assertThat(seen.get(0).params()).containsEntry("stop", "END");
+
+    seen.clear();
+    // A list is joined; blank and non-string entries contribute nothing rather than producing
+    // empty sequences the provider would have to interpret.
+    post(
+        HttpIngressServer.PATH_CHAT,
+        "{\"model\":\"m\",\"messages\":[{\"role\":\"user\",\"content\":\"h\"}],"
+            + "\"stop\":[\"A\",\" \",\"B\",1,\"\"]}",
+        "application/json");
+    assertThat(seen.get(0).params()).containsEntry("stop", "A,B");
+
+    seen.clear();
+    // Nothing usable at all leaves the parameter absent entirely.
+    post(
+        HttpIngressServer.PATH_CHAT,
+        "{\"model\":\"m\",\"messages\":[{\"role\":\"user\",\"content\":\"h\"}],\"stop\":[\"\"]}",
+        "application/json");
+    assertThat(seen.get(0).params()).doesNotContainKey("stop");
+  }
+
+  @Test
+  void aClientSuppliedCorrelationIdIsUsedAndOtherwiseOneIsGenerated() throws Exception {
+    // The correlation id is echoed into the response and becomes the request's identity
+    // downstream. It is accepted from the client by design, so what must hold is that the value
+    // arrives unaltered and that its absence is filled rather than left blank.
+    final HttpRequest.Builder builder =
+        HttpRequest.newBuilder()
+            .uri(uri(HttpIngressServer.PATH_CHAT))
+            .header("Content-Type", "application/json")
+            .header("X-Correlation-Id", "chosen-id")
+            .header("Idempotency-Key", "chosen-key")
+            .POST(HttpRequest.BodyPublishers.ofString(CHAT_BODY));
+    client.send(builder.build(), HttpResponse.BodyHandlers.ofString());
+
+    assertThat(seen.get(0).correlationId()).isEqualTo("chosen-id");
+    assertThat(seen.get(0).idempotencyKey()).isEqualTo("chosen-key");
+
+    seen.clear();
+    post(HttpIngressServer.PATH_CHAT, CHAT_BODY, "application/json");
+    assertThat(seen.get(0).correlationId()).isNotBlank();
+    assertThat(seen.get(0).idempotencyKey()).isNotBlank();
+  }
+
+  @Test
   void unsupportedContentTypeIsRejectedWith415() throws Exception {
     final HttpResponse<String> response =
         post(HttpIngressServer.PATH_CHAT, CHAT_BODY, "text/plain");
