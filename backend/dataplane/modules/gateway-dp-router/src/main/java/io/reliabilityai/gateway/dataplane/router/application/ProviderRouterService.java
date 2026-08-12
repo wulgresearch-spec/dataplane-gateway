@@ -69,9 +69,21 @@ public final class ProviderRouterService implements ProviderRouterPort {
       return failed(FailureReason.NO_ELIGIBLE_PROVIDER);
     }
 
+    // A candidate that does not serve the requested model is not a candidate at all, so this runs
+    // ahead of the policy tiers rather than among them. Governance authorises the model the caller
+    // asked for — and resolves that request's permitted routes by exactly this equality — so
+    // selecting a candidate for some other model would invoke a model no decision ever approved,
+    // while metering and the response still named the requested one. Equality is canonical and
+    // exact: no case folding, prefix matching, aliasing or substitution, because each of those
+    // would reintroduce the gap by a narrower route.
+    List<CapabilityDescriptor> survivors = snapshot.descriptors();
+    survivors = filter(survivors, c -> c.canonicalModelId().equals(request.canonicalModelId()));
+    if (survivors.isEmpty()) {
+      return failed(FailureReason.NO_ELIGIBLE_PROVIDER);
+    }
+
     // Hard tiers 1-6 + budget, applied in canonical order; the tier that empties the set is
     // binding.
-    List<CapabilityDescriptor> survivors = snapshot.descriptors();
     survivors = filter(survivors, c -> !policy.deniedCandidates().contains(c.candidateId()));
     if (survivors.isEmpty()) {
       return failed(FailureReason.POLICY_CONFLICT);

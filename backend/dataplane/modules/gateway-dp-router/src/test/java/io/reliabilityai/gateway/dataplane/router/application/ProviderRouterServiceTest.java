@@ -117,7 +117,7 @@ class ProviderRouterServiceTest {
     // Make request require HIPAA which candidate lacks:
     final var reqHipaa =
         new RoutingRequest(
-            new CanonicalModelId("m"),
+            new CanonicalModelId("model-x"),
             new CorrelationId("c"),
             TENANT,
             REGION,
@@ -149,7 +149,7 @@ class ProviderRouterServiceTest {
     snapshot(eligible("a", 5_000, 10));
     final var budgetReq =
         new RoutingRequest(
-            new CanonicalModelId("m"),
+            new CanonicalModelId("model-x"),
             new CorrelationId("c"),
             TENANT,
             REGION,
@@ -190,7 +190,7 @@ class ProviderRouterServiceTest {
     snapshot(eligible("a", 100, 10), eligible("b", 100, 10));
     final var reqPreferB =
         new RoutingRequest(
-            new CanonicalModelId("m"),
+            new CanonicalModelId("model-x"),
             new CorrelationId("c"),
             TENANT,
             REGION,
@@ -216,6 +216,194 @@ class ProviderRouterServiceTest {
   @Test
   void rejectsNullRequest() {
     assertThatThrownBy(() -> router.route(null)).isInstanceOf(NullPointerException.class);
+  }
+
+  // ---- the requested-model boundary ------------------------------------------------------------
+  // Governance authorises the model the caller asked for and resolves that request's permitted
+  // routes by exact model equality. If selection could leave that model, a request admitted for one
+  // model could invoke another that no decision ever approved — while metering and the response
+  // still named the model the caller asked for.
+
+  @Test
+  void aModelNoCandidateServesIsRefused() {
+    snapshot(servingModel(eligible("b1", 1, 1), "model-B"));
+
+    final RoutingResult result = router.route(requestFor("model-A"));
+
+    assertThat(result).isInstanceOf(RoutingResult.Failed.class);
+    assertThat(reason(result)).isEqualTo(FailureReason.NO_ELIGIBLE_PROVIDER);
+  }
+
+  @Test
+  void aBetterScoringCandidateForAnotherModelIsNeverSelected() {
+    // The other model's candidate is strictly cheaper and strictly faster, so on score alone it
+    // would win outright. It must not be reachable at all.
+    snapshot(
+        servingModel(eligible("a1", 10_000, 500), "model-A"),
+        servingModel(eligible("b1", 1, 1), "model-B"));
+
+    assertThat(primaryRoute(router.route(requestFor("model-A")))).isEqualTo("route/a1");
+  }
+
+  @Test
+  void failoverNeverLeavesTheRequestedModel() {
+    // Failover is where a boundary is most easily lost: the primary is scrutinised, the rest are
+    // assumed. Every entry must be as eligible as the primary.
+    snapshot(
+        servingModel(eligible("a1", 100, 10), "model-A"),
+        servingModel(eligible("a2", 200, 10), "model-A"),
+        servingModel(eligible("b1", 1, 1), "model-B"),
+        servingModel(eligible("b2", 2, 1), "model-B"));
+
+    final RoutingResult.Routed routed = (RoutingResult.Routed) router.route(requestFor("model-A"));
+
+    assertThat(routed.primary().canonicalModelId().value()).isEqualTo("model-A");
+    assertThat(routed.failover()).hasSize(1);
+    assertThat(routed.failover())
+        .allSatisfy(target -> assertThat(target.canonicalModelId().value()).isEqualTo("model-A"));
+  }
+
+  @Test
+  void aPreferredCandidateForAnotherModelCannotWin() {
+    // The preference bonus dwarfs the cost and latency weights, so this proves preference is a
+    // tie-breaker among eligible candidates and never a way into the set.
+    snapshot(
+        servingModel(eligible("a1", 100, 10), "model-A"),
+        servingModel(eligible("b1", 100, 10), "model-B"));
+    final var preferOtherModel =
+        new RoutingRequest(
+            new CanonicalModelId("model-A"),
+            new CorrelationId("c"),
+            TENANT,
+            REGION,
+            Set.of("streaming"),
+            0,
+            Set.of("SOC2"),
+            0L,
+            Set.of("b1"));
+
+    assertThat(primaryRoute(router.route(preferOtherModel))).isEqualTo("route/a1");
+  }
+
+  @Test
+  void modelMatchingIsExactAndNotFuzzy() {
+    // Case folding, prefixes and substrings are each a way back to the same gap, so none of them
+    // may resolve to a candidate.
+    snapshot(servingModel(eligible("a1", 100, 10), "model-A"));
+
+    for (final String nearMiss :
+        List.of("MODEL-A", "model-a", "model-A-extra", "model-A-something", "model", "model-A ")) {
+      assertThat(reason(router.route(requestFor(nearMiss))))
+          .as("near miss %s must not match", nearMiss)
+          .isEqualTo(FailureReason.NO_ELIGIBLE_PROVIDER);
+    }
+    assertThat(router.route(requestFor("model-A"))).isInstanceOf(RoutingResult.Routed.class);
+  }
+
+  @Test
+  void aModelMismatchBindsBeforeAnyPolicyTier() {
+    // The other model's candidate is also tenant-denied. Were the tiers applied first the surfaced
+    // reason would be POLICY_CONFLICT, naming a conflict with a candidate the request was never
+    // entitled to be compared against.
+    policyPort.policy = new RoutingPolicy(1L, 1L, 1_000_000L, 0.9, Set.of("b1"));
+    snapshot(servingModel(eligible("b1", 100, 10), "model-B"));
+
+    assertThat(reason(router.route(requestFor("model-A"))))
+        .isEqualTo(FailureReason.NO_ELIGIBLE_PROVIDER);
+  }
+
+  @Test
+  void aCandidateSittingExactlyOnEachHardTierBoundaryIsStillEligible() {
+    // Each of these tiers is a limit rather than a target: a candidate whose context length exactly
+    // meets the minimum, whose availability exactly equals the floor, and whose cost exactly equals
+    // the ceiling satisfies all three. Reading any of them exclusively would refuse candidates the
+    // configuration permits, which is a self-inflicted outage rather than a safety margin.
+    final CapabilityDescriptor onEveryBoundary =
+        withAvailability(withContextLength(eligible("a", 4_000, 10), 4_000), 0.9);
+    snapshot(onEveryBoundary);
+    final var atCeiling =
+        new RoutingRequest(
+            new CanonicalModelId("model-x"),
+            new CorrelationId("c"),
+            TENANT,
+            REGION,
+            Set.of("streaming"),
+            4_000,
+            Set.of("SOC2"),
+            4_000L,
+            Set.of());
+
+    assertThat(primaryRoute(router.route(atCeiling))).isEqualTo("route/a");
+  }
+
+  @Test
+  void aCandidateOneStepPastEachHardTierBoundaryIsRefused() {
+    // The other side of the same three limits, so the boundary is pinned from both directions and
+    // the binding reason names the tier that actually excluded the candidate.
+    snapshot(withContextLength(eligible("a", 100, 10), 3_999));
+    assertThat(reason(router.route(request("c")))).isEqualTo(FailureReason.CAPABILITY_UNSATISFIED);
+
+    snapshot(withAvailability(eligible("a", 100, 10), 0.899));
+    assertThat(reason(router.route(request("c")))).isEqualTo(FailureReason.NO_AVAILABLE_PROVIDER);
+
+    snapshot(eligible("a", 4_001, 10));
+    final var justOverCeiling =
+        new RoutingRequest(
+            new CanonicalModelId("model-x"),
+            new CorrelationId("c"),
+            TENANT,
+            REGION,
+            Set.of("streaming"),
+            4_000,
+            Set.of("SOC2"),
+            4_000L,
+            Set.of());
+    assertThat(reason(router.route(justOverCeiling))).isEqualTo(FailureReason.BUDGET_EXCEEDED);
+  }
+
+  private static CapabilityDescriptor withContextLength(
+      final CapabilityDescriptor d, final int contextLength) {
+    return new CapabilityDescriptor(
+        d.candidateId(),
+        d.canonicalModelId(),
+        d.providerRouteRef(),
+        d.supportedCapabilities(),
+        contextLength,
+        d.complianceAttestations(),
+        d.allowedRegions(),
+        d.costMicros(),
+        d.availabilityScore(),
+        d.expectedLatencyMillis(),
+        d.circuitOpen());
+  }
+
+  private static RoutingRequest requestFor(final String model) {
+    return new RoutingRequest(
+        new CanonicalModelId(model),
+        new CorrelationId("corr-1"),
+        TENANT,
+        REGION,
+        Set.of("streaming"),
+        4_000,
+        Set.of("SOC2"),
+        0L,
+        Set.of());
+  }
+
+  private static CapabilityDescriptor servingModel(
+      final CapabilityDescriptor d, final String model) {
+    return new CapabilityDescriptor(
+        d.candidateId(),
+        new CanonicalModelId(model),
+        d.providerRouteRef(),
+        d.supportedCapabilities(),
+        d.maxContextLength(),
+        d.complianceAttestations(),
+        d.allowedRegions(),
+        d.costMicros(),
+        d.availabilityScore(),
+        d.expectedLatencyMillis(),
+        d.circuitOpen());
   }
 
   private static CapabilityDescriptor withCompliance(
