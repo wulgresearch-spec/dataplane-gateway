@@ -1,5 +1,6 @@
 package io.reliabilityai.gateway.dataplane.auth.jwt;
 
+import static java.nio.charset.StandardCharsets.UTF_8;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
@@ -138,6 +139,51 @@ class JwtIdentityVerifierTest {
         .isInstanceOf(VerificationOutcome.Verified.class);
   }
 
+  @Test
+  void aTokenWhoseClaimSetRepeatsAMemberIsRefusedAsMalformed() {
+    // End-to-end proof that the parser's duplicate rejection reaches an authentication decision.
+    // Decoding runs before signature verification, so an ambiguous claim set is refused on its
+    // shape and never reaches the point where a signature could vouch for either reading. The
+    // null-first form is included because that is the one the presence test previously let through.
+    final String header = "{\"alg\":\"RS256\",\"typ\":\"JWT\",\"kid\":\"kid-rsa\"}";
+
+    assertThat(
+            reasonOf(verify(JwtFixture.raw(header, "{\"exp\":null,\"exp\":9999999999}", "AAAA"))))
+        .isEqualTo(AuthenticationFailureReason.MALFORMED_TOKEN);
+    assertThat(
+            reasonOf(
+                verify(JwtFixture.raw(header, "{\"tid\":null,\"tid\":\"other-tenant\"}", "AAAA"))))
+        .isEqualTo(AuthenticationFailureReason.MALFORMED_TOKEN);
+    assertThat(reasonOf(verify(JwtFixture.raw(header, "{\"sub\":\"a\",\"sub\":\"b\"}", "AAAA"))))
+        .isEqualTo(AuthenticationFailureReason.MALFORMED_TOKEN);
+  }
+
+  @Test
+  void anExpiryThatIsNotANumberIsTreatedAsNoExpiryAtAll() {
+    // Type confusion is the cheap way to disable a temporal check: if a string expiry read as
+    // "absent" and absent meant "fine", the token would never expire. Absent is refused, so the
+    // wrong type has to be refused too.
+    final Map<String, Object> claims = JwtFixture.claims();
+    claims.put("exp", "9999999999");
+
+    assertThat(reasonOf(verify(JwtFixture.sign(rsa, claims))))
+        .isEqualTo(AuthenticationFailureReason.MALFORMED_TOKEN);
+  }
+
+  @Test
+  void anExpiryTooLargeToBeAnInstantIsRefusedRatherThanTreatedAsNeverExpiring() {
+    // 1e400 exceeds a double, so it arrives as infinity and saturates to Long.MAX_VALUE - a value
+    // no Instant can hold. The failure has to collapse to a refusal; the alternative reading is an
+    // expiry so far away the token is effectively immortal.
+    final Map<String, Object> claims = JwtFixture.claims();
+    claims.put("exp", new java.math.BigDecimal("1e400"));
+
+    final VerificationOutcome outcome = verify(JwtFixture.sign(rsa, claims));
+
+    assertThat(outcome).isInstanceOf(VerificationOutcome.Rejected.class);
+    assertThat(reasonOf(outcome)).isEqualTo(AuthenticationFailureReason.INTERNAL);
+  }
+
   // ---- identity claims -----------------------------------------------------------------------
 
   @Test
@@ -174,6 +220,40 @@ class JwtIdentityVerifierTest {
     claims.remove(JwtFixture.TENANT_CLAIM);
 
     assertThat(reasonOf(verify(JwtFixture.sign(rsa, claims))))
+        .isEqualTo(AuthenticationFailureReason.TENANT_UNRESOLVED);
+  }
+
+  @Test
+  void aBlankSubjectOrTenantIsNoIdentityAtAll() {
+    // Present-but-empty is the gap between "the claim exists" and "the claim names someone". A
+    // blank subject would become a principal with an empty id, and a blank tenant would resolve to
+    // no tenant while still being treated as resolved - either one authorises a request nobody
+    // owns. Whitespace is checked as well as the empty string, since neither names a principal.
+    for (final String blank : List.of("", "   ")) {
+      final Map<String, Object> blankSubject = JwtFixture.claims();
+      blankSubject.put("sub", blank);
+      assertThat(reasonOf(verify(JwtFixture.sign(rsa, blankSubject))))
+          .isEqualTo(AuthenticationFailureReason.UNKNOWN_PRINCIPAL);
+
+      final Map<String, Object> blankTenant = JwtFixture.claims();
+      blankTenant.put(JwtFixture.TENANT_CLAIM, blank);
+      assertThat(reasonOf(verify(JwtFixture.sign(rsa, blankTenant))))
+          .isEqualTo(AuthenticationFailureReason.TENANT_UNRESOLVED);
+    }
+  }
+
+  @Test
+  void aSubjectOrTenantOfTheWrongTypeIsNoIdentityEither() {
+    // The typed accessor returns nothing for a non-string, so a numeric or structural claim must
+    // land on the same refusal as an absent one rather than being coerced into an identity.
+    final Map<String, Object> numericSubject = JwtFixture.claims();
+    numericSubject.put("sub", 12345);
+    assertThat(reasonOf(verify(JwtFixture.sign(rsa, numericSubject))))
+        .isEqualTo(AuthenticationFailureReason.UNKNOWN_PRINCIPAL);
+
+    final Map<String, Object> numericTenant = JwtFixture.claims();
+    numericTenant.put(JwtFixture.TENANT_CLAIM, 67890);
+    assertThat(reasonOf(verify(JwtFixture.sign(rsa, numericTenant))))
         .isEqualTo(AuthenticationFailureReason.TENANT_UNRESOLVED);
   }
 
@@ -354,6 +434,180 @@ class JwtIdentityVerifierTest {
             development.verify(
                 JwtFixture.bearer(JwtFixture.signHmac(JwtFixture.claims())), snapshot))
         .isInstanceOf(VerificationOutcome.Verified.class);
+  }
+
+  /** The development configuration, which is the only way the HMAC path becomes reachable. */
+  private static JwtIdentityVerifier hmacVerifier(final Optional<byte[]> secret) {
+    return new JwtIdentityVerifier(
+        new JwtAuthenticationConfig(
+            JwtFixture.ISSUER,
+            JwtFixture.AUDIENCE,
+            secret.isPresent()
+                ? Set.of(JwtAuthenticationConfig.HS256)
+                : Set.of(JwtAuthenticationConfig.RS256),
+            Duration.ofSeconds(60),
+            JwtAuthenticationConfig.DEFAULT_MAX_TOKEN_BYTES,
+            JwtFixture.TENANT_CLAIM,
+            secret),
+        JwtFixture.CLOCK);
+  }
+
+  @Test
+  void rejectsAnHs256TokenSignedWithTheWrongSecret() {
+    // The whole point of the HMAC path. Every other HS256 test presents a correctly-signed token,
+    // so nothing proved that a bad signature is refused — an accepted forgery here would be a
+    // fully authenticated principal and tenant, admitted to governance, router and secrets.
+    // The claim set is valid and the structure is well-formed; only the signature is wrong, so a
+    // rejection can come from nothing but the comparison.
+    final byte[] attackerSecret = "not-the-configured-development-secret".getBytes(UTF_8);
+    final String forged = JwtFixture.signHmac(attackerSecret, JwtFixture.claims());
+
+    final VerificationOutcome outcome =
+        hmacVerifier(Optional.of(JwtFixture.HMAC_SECRET))
+            .verify(JwtFixture.bearer(forged), snapshot);
+
+    assertThat(outcome).isInstanceOf(VerificationOutcome.Rejected.class);
+    assertThat(reasonOf(outcome)).isEqualTo(AuthenticationFailureReason.INVALID_SIGNATURE);
+  }
+
+  @Test
+  void rejectsAnHs256TokenWhoseSignatureHasBeenTruncatedOrEmptied() {
+    // A signature of the wrong length must fail the comparison rather than the array handling.
+    final String valid = JwtFixture.signHmac(JwtFixture.claims());
+    final String truncated = valid.substring(0, valid.length() - 4);
+    final JwtIdentityVerifier development = hmacVerifier(Optional.of(JwtFixture.HMAC_SECRET));
+
+    assertThat(reasonOf(development.verify(JwtFixture.bearer(truncated), snapshot)))
+        .isEqualTo(AuthenticationFailureReason.INVALID_SIGNATURE);
+  }
+
+  @Test
+  void rejectsAnHs256TokenWhenTheDevelopmentPathIsNotEnabled() {
+    // With HS256 absent from the allow-list the token is refused before any comparison happens,
+    // so a deployment that never opted into the development path cannot be handed one.
+    final String token = JwtFixture.signHmac(JwtFixture.claims());
+
+    assertThat(reasonOf(hmacVerifier(Optional.empty()).verify(JwtFixture.bearer(token), snapshot)))
+        .isEqualTo(AuthenticationFailureReason.ALGORITHM_MISMATCH);
+  }
+
+  // ---- fail-closed boundaries -------------------------------------------------------------------
+
+  @Test
+  void missingArgumentsAreRefusedRatherThanDereferenced() {
+    // verify() is called by the authentication service on every request; a null here must be a
+    // refusal, never a thrown exception the caller has to interpret.
+    final String token = JwtFixture.sign(rsa, JwtFixture.claims());
+
+    assertThat(reasonOf(verifier.verify(null, snapshot)))
+        .isEqualTo(AuthenticationFailureReason.INTERNAL);
+    assertThat(reasonOf(verifier.verify(JwtFixture.bearer(token), null)))
+        .isEqualTo(AuthenticationFailureReason.INTERNAL);
+    assertThat(reasonOf(verifier.verify(null, null)))
+        .isEqualTo(AuthenticationFailureReason.INTERNAL);
+  }
+
+  @Test
+  void aClockThatThrowsBecomesARefusalNotAnEscapingException() {
+    // The clock is consulted while validating expiry. Any collaborator failure has to collapse to
+    // a refusal: an exception escaping verification would leave the caller with no decision at
+    // all, and the one thing that must never follow is an authenticated request.
+    final JwtIdentityVerifier broken =
+        new JwtIdentityVerifier(
+            JwtFixture.config(),
+            () -> {
+              throw new IllegalStateException("no clock");
+            });
+
+    final VerificationOutcome outcome =
+        broken.verify(JwtFixture.bearer(JwtFixture.sign(rsa, JwtFixture.claims())), snapshot);
+
+    assertThat(outcome).isInstanceOf(VerificationOutcome.Rejected.class);
+    assertThat(reasonOf(outcome)).isEqualTo(AuthenticationFailureReason.INTERNAL);
+  }
+
+  @Test
+  void anEncryptedTokenIsRefusedRatherThanTreatedAsSigned() {
+    // A JWE carries no verifiable signature in the JWS sense; accepting one would mean trusting
+    // claims nothing has authenticated.
+    final Map<String, Object> header = JwtFixture.header("RS256", rsa.kid());
+    header.put("typ", "JWE");
+
+    assertThat(reasonOf(verify(JwtFixture.sign(rsa, header, JwtFixture.claims()))))
+        .isEqualTo(AuthenticationFailureReason.MALFORMED_TOKEN);
+  }
+
+  // ---- JWKS never overrides the control plane ---------------------------------------------------
+
+  /** A cache already holding one refreshed generation serving exactly this key. */
+  private static JwksKeyCache cacheServing(final JwtFixture.Keys keys) {
+    final JwksKeyCache cache =
+        new JwksKeyCache(
+            () -> JwtFixture.jwksDocument(keys), Duration.ofMinutes(10), JwtFixture.CLOCK);
+    cache.refresh();
+    return cache;
+  }
+
+  @Test
+  void aKeyKnownOnlyToJwksIsMergedSoTheTokenVerifies() {
+    // The reason the merge exists: a kid the control plane has not published yet, but the identity
+    // provider has. Without this the pinning tests below would also pass if the merge never ran at
+    // all, which would prove nothing about precedence.
+    final JwtFixture.Keys jwksOnly = JwtFixture.rsa("kid-jwks-only");
+    final JwtIdentityVerifier withJwks =
+        new JwtIdentityVerifier(
+            JwtFixture.config(), JwtFixture.CLOCK, Optional.of(cacheServing(jwksOnly)));
+
+    assertThat(
+            withJwks.verify(
+                JwtFixture.bearer(JwtFixture.sign(jwksOnly, JwtFixture.claims())),
+                JwtFixture.snapshot(rsa)))
+        .isInstanceOf(VerificationOutcome.Verified.class);
+  }
+
+  @Test
+  void aSnapshotKeyWinsOverAJwksKeyPublishedUnderTheSameKid() {
+    // The operator pins keys in the snapshot; a JWKS document is a convenience, not an authority.
+    // Here the JWKS serves a *different* key under the same kid, so if the merge preferred JWKS
+    // the token signed by the pinned key would stop verifying — and, worse, a token signed by
+    // whoever controls the JWKS endpoint would start verifying.
+    final JwtFixture.Keys pinned = JwtFixture.rsa("kid-shared");
+    final JwtFixture.Keys impostor = JwtFixture.rsa("kid-shared");
+    final JwtIdentityVerifier withJwks =
+        new JwtIdentityVerifier(
+            JwtFixture.config(), JwtFixture.CLOCK, Optional.of(cacheServing(impostor)));
+
+    assertThat(
+            withJwks.verify(
+                JwtFixture.bearer(JwtFixture.sign(pinned, JwtFixture.claims())),
+                JwtFixture.snapshot(pinned)))
+        .isInstanceOf(VerificationOutcome.Verified.class);
+    // The impostor's own token is refused: its kid resolves to the pinned key, whose public half
+    // does not verify that signature.
+    assertThat(
+            reasonOf(
+                withJwks.verify(
+                    JwtFixture.bearer(JwtFixture.sign(impostor, JwtFixture.claims())),
+                    JwtFixture.snapshot(pinned))))
+        .isEqualTo(AuthenticationFailureReason.INVALID_SIGNATURE);
+  }
+
+  @Test
+  void aRevokedKidIsNeverResurrectedFromJwks() {
+    // Revocation is the control plane's emergency stop. If a JWKS document could re-supply a
+    // revoked kid, revoking a compromised key would not actually stop tokens signed with it.
+    final JwtFixture.Keys revoked = JwtFixture.rsa("kid-revoked");
+    final JwtIdentityVerifier withJwks =
+        new JwtIdentityVerifier(
+            JwtFixture.config(), JwtFixture.CLOCK, Optional.of(cacheServing(revoked)));
+
+    final VerificationOutcome outcome =
+        withJwks.verify(
+            JwtFixture.bearer(JwtFixture.sign(revoked, JwtFixture.claims())),
+            JwtFixture.snapshot(List.of("kid-revoked"), rsa));
+
+    assertThat(outcome).isInstanceOf(VerificationOutcome.Rejected.class);
+    assertThat(reasonOf(outcome)).isEqualTo(AuthenticationFailureReason.KEY_REVOKED);
   }
 
   @Test

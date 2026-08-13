@@ -13,8 +13,10 @@ import java.security.KeyPair;
 import java.security.KeyPairGenerator;
 import java.security.PrivateKey;
 import java.security.Signature;
+import java.security.interfaces.RSAPublicKey;
 import java.security.spec.ECGenParameterSpec;
 import java.time.Instant;
+import java.util.Arrays;
 import java.util.Base64;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -113,15 +115,43 @@ final class JwtFixture {
   }
 
   static String signHmac(final Map<String, Object> claims) {
+    return signHmac(HMAC_SECRET, claims);
+  }
+
+  /** Signs with an arbitrary secret, so a test can present a signature made by the wrong key. */
+  static String signHmac(final byte[] secret, final Map<String, Object> claims) {
     final String signingInput = segment(header("HS256", "dev")) + '.' + segment(claims);
     try {
       final Mac mac = Mac.getInstance("HmacSHA256");
-      mac.init(new SecretKeySpec(HMAC_SECRET, "HmacSHA256"));
+      mac.init(new SecretKeySpec(secret, "HmacSHA256"));
       final byte[] signature = mac.doFinal(signingInput.getBytes(StandardCharsets.US_ASCII));
       return signingInput + '.' + Base64.getUrlEncoder().withoutPadding().encodeToString(signature);
     } catch (final Exception e) {
       throw new IllegalStateException("cannot sign", e);
     }
+  }
+
+  /**
+   * Renders a single-key RSA JWKS document, in the shape real identity providers publish.
+   *
+   * <p>Used by the verifier tests to stand up a cache that actually serves a key, so the
+   * snapshot-versus-JWKS precedence rules are exercised against a real document rather than a stub.
+   */
+  static String jwksDocument(final Keys keys) {
+    final RSAPublicKey rsa = (RSAPublicKey) keys.keyPair().getPublic();
+    final Base64.Encoder url = Base64.getUrlEncoder().withoutPadding();
+    return "{\"keys\":[{\"kty\":\"RSA\",\"use\":\"sig\",\"alg\":\"RS256\",\"kid\":\""
+        + keys.kid()
+        + "\",\"n\":\""
+        + url.encodeToString(unsigned(rsa.getModulus().toByteArray()))
+        + "\",\"e\":\""
+        + url.encodeToString(unsigned(rsa.getPublicExponent().toByteArray()))
+        + "\"}]}";
+  }
+
+  /** JWK integers are unsigned; BigInteger may prepend a zero sign byte. */
+  private static byte[] unsigned(final byte[] value) {
+    return value.length > 1 && value[0] == 0 ? Arrays.copyOfRange(value, 1, value.length) : value;
   }
 
   /** Builds a token from raw segment strings, for structural-failure tests. */

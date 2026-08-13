@@ -119,10 +119,14 @@ public final class JwtJson {
       index++;
       skipWhitespace();
       final Object value = readValue(depth + 1);
-      if (object.putIfAbsent(name, value) != null) {
-        // See the class note: a repeated claim is an ambiguity, never a last-one-wins merge.
+      // See the class note: a repeated claim is an ambiguity, never a last-one-wins merge. The
+      // question is whether the name was already present, which is not the same as whether it
+      // mapped to something: a JSON null is stored as a null value, and asking putIfAbsent would
+      // read that back as "absent" and let the repeat through.
+      if (object.containsKey(name)) {
         throw new JsonException("duplicate member");
       }
+      object.put(name, value);
       skipWhitespace();
       final char next = peek();
       index++;
