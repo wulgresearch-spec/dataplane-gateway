@@ -21,9 +21,11 @@ import java.security.MessageDigest;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
 
@@ -50,10 +52,18 @@ public final class JwtIdentityVerifier implements IdentityVerifierPort {
   private static final String BEARER = "bearer ";
   private static final String AUTH_METHOD = "jwt";
 
+  /**
+   * The longest accepted governance claim value. A scope-node identifier is a key into the policy
+   * hierarchy, not free text; bounding it keeps an issuer from turning the policy cache into an
+   * unbounded keyspace.
+   */
+  private static final int MAX_GOVERNANCE_CLAIM_LENGTH = 200;
+
   private final JwtAuthenticationConfig config;
   private final ClockPort clock;
   private final JdkJwsSignatureVerifier signatureVerifier;
   private final Optional<JwksKeyCache> jwks;
+  private final Set<String> governanceClaims;
 
   /**
    * Creates the verifier using only snapshot-supplied keys.
@@ -77,9 +87,54 @@ public final class JwtIdentityVerifier implements IdentityVerifierPort {
       final JwtAuthenticationConfig config,
       final ClockPort clock,
       final Optional<JwksKeyCache> jwks) {
+    this(config, clock, jwks, Set.of());
+  }
+
+  /**
+   * Creates the verifier with a set of claims the deployment has declared security-relevant.
+   *
+   * <p>Each named claim is forwarded to the principal context so the governance scope chain can
+   * hang a node off it, and is <b>required</b>: a token that omits one is refused rather than
+   * authenticated with the node missing. That asymmetry is deliberate. The policy merge only ever
+   * tightens, so an omitted node cannot make a decision stricter — it can only drop a restriction
+   * the operator authored, silently. Declaring a claim security-relevant and then proceeding
+   * without it would be the same fail-open this parameter exists to close.
+   *
+   * <p>Naming a claim the verifier already writes itself ({@code iss}, {@code aud}, {@code alg},
+   * {@code kid} or the tenant claim) is rejected at construction: the forwarded value would be the
+   * gateway's own, not the issuer's, so the governance node it addressed would be an accident
+   * rather than a decision.
+   *
+   * @param config the verification policy
+   * @param clock the injected clock
+   * @param jwks the cached JWKS keys, consulted only when the snapshot does not know the {@code
+   *     kid}
+   * @param governanceClaims claim names the deployment requires and forwards; empty forwards none
+   */
+  public JwtIdentityVerifier(
+      final JwtAuthenticationConfig config,
+      final ClockPort clock,
+      final Optional<JwksKeyCache> jwks,
+      final Set<String> governanceClaims) {
     this.config = Preconditions.requireNonNull(config, "config");
     this.clock = Preconditions.requireNonNull(clock, "clock");
     this.jwks = Preconditions.requireNonNull(jwks, "jwks");
+    Preconditions.requireNonNull(governanceClaims, "governanceClaims");
+    // Built additively, not with Set.of: a deployment whose tenant claim is literally named "iss"
+    // or "kid" is unusual but legal, and Set.of rejects a duplicate element by throwing — which
+    // would refuse to construct a verifier that has nothing wrong with it.
+    final Set<String> reserved = new LinkedHashSet<>(List.of("iss", "aud", "alg", "kid"));
+    reserved.add(config.tenantClaim());
+    final Set<String> declared = new LinkedHashSet<>();
+    for (final String name : governanceClaims) {
+      Preconditions.requireNonBlank(name, "governanceClaim");
+      if (reserved.contains(name)) {
+        throw new IllegalArgumentException(
+            "governance claim collides with a reserved claim: " + name);
+      }
+      declared.add(name);
+    }
+    this.governanceClaims = Set.copyOf(declared);
     this.signatureVerifier = new JdkJwsSignatureVerifier();
   }
 
@@ -279,8 +334,54 @@ public final class JwtIdentityVerifier implements IdentityVerifierPort {
       return reject(AuthenticationFailureReason.TENANT_UNRESOLVED);
     }
 
+    final Map<String, String> governance = governanceClaimValues(payload);
+    if (governance == null) {
+      return reject(AuthenticationFailureReason.MISSING_REQUIRED_CLAIM);
+    }
+
     return new VerificationOutcome.Verified(
-        new PrincipalId(subject), safeClaims(decoded, tenant), AUTH_METHOD);
+        new PrincipalId(subject), safeClaims(decoded, tenant, governance), AUTH_METHOD);
+  }
+
+  /**
+   * Reads the claims the deployment declared security-relevant, or {@code null} when any is
+   * unusable.
+   *
+   * <p>Each value becomes a governance scope-node identifier, so it is validated rather than
+   * trusted: an issuer-controlled string flows into the policy hierarchy address and into audit
+   * records. Blank, over-long or control-character values are refused instead of being sanitised,
+   * because silently rewriting an identifier would attach the request to a node the operator never
+   * authored.
+   *
+   * @param payload the verified token payload
+   * @return the claim values, or {@code null} when one is absent or malformed
+   */
+  private Map<String, String> governanceClaimValues(final Map<String, Object> payload) {
+    if (governanceClaims.isEmpty()) {
+      return Map.of();
+    }
+    final Map<String, String> resolved = new LinkedHashMap<>();
+    for (final String name : governanceClaims) {
+      final String value = JwtJson.stringAt(payload, name);
+      if (value == null || value.isBlank() || !usableScopeId(value)) {
+        return null;
+      }
+      resolved.put(name, value);
+    }
+    return Map.copyOf(resolved);
+  }
+
+  /** Whether a claim value is a usable scope-node identifier: bounded and free of control bytes. */
+  private static boolean usableScopeId(final String value) {
+    if (value.length() > MAX_GOVERNANCE_CLAIM_LENGTH) {
+      return false;
+    }
+    for (int index = 0; index < value.length(); index++) {
+      if (Character.isISOControl(value.charAt(index))) {
+        return false;
+      }
+    }
+    return true;
   }
 
   /**
@@ -291,8 +392,9 @@ public final class JwtIdentityVerifier implements IdentityVerifierPort {
    * push unknown, possibly personal data into the audit trail. Only the values the gateway actually
    * reasons about are propagated.
    */
-  private Map<String, String> safeClaims(final DecodedJwt decoded, final String tenant) {
-    final Map<String, String> claims = new LinkedHashMap<>();
+  private Map<String, String> safeClaims(
+      final DecodedJwt decoded, final String tenant, final Map<String, String> governance) {
+    final Map<String, String> claims = new LinkedHashMap<>(governance);
     claims.put("iss", config.issuer());
     claims.put("aud", config.audience());
     claims.put("alg", String.valueOf(JwtJson.stringAt(decoded.header(), "alg")));

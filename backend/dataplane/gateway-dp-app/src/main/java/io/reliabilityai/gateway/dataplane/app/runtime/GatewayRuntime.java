@@ -2,6 +2,8 @@ package io.reliabilityai.gateway.dataplane.app.runtime;
 
 import io.reliabilityai.gateway.canonical.identity.CorrelationId;
 import io.reliabilityai.gateway.canonical.secret.CredentialLease;
+import io.reliabilityai.gateway.canonical.snapshot.TenantScopeSnapshot;
+import io.reliabilityai.gateway.canonical.snapshot.VerificationKeySnapshot;
 import io.reliabilityai.gateway.common.Preconditions;
 import io.reliabilityai.gateway.dataplane.app.GatewayDataPlaneApplication;
 import io.reliabilityai.gateway.dataplane.app.MandatoryStage;
@@ -203,6 +205,8 @@ public final class GatewayRuntime {
   private TelemetryEmitService telemetry;
   private SnapshotCapabilityRegistry capabilityRegistry;
   private AuthenticationService authentication;
+  private PinnedSnapshotSource<VerificationKeySnapshot> keySnapshotSource;
+  private PinnedSnapshotSource<TenantScopeSnapshot> tenantSnapshotSource;
   private Optional<IdentityVerifierPort> identityVerifier = Optional.empty();
   private Optional<SchemaValidatorPort> schemaValidator = Optional.empty();
   private JwksKeyCache jwksCache;
@@ -479,7 +483,42 @@ public final class GatewayRuntime {
     identityVerifier =
         Optional.of(
             new JwtIdentityVerifier(
-                authenticationConfig.jwt(), config.clock(), Optional.ofNullable(jwksCache)));
+                authenticationConfig.jwt(),
+                config.clock(),
+                Optional.ofNullable(jwksCache),
+                governanceClaimNames()));
+  }
+
+  /**
+   * The claim names the wired scope resolver needs, taken from the resolver itself.
+   *
+   * <p>Derived rather than configured a second time: the verifier must forward exactly what the
+   * resolver reads, and any second declaration of those names could drift from this one. A drifted
+   * name is invisible — the claim never arrives, the governance node is never built, and the policy
+   * attached to it silently stops participating in the merge, which is the failure this wiring
+   * exists to prevent.
+   *
+   * <p>Asked of the resolver contract rather than of one implementation of it. A resolver an
+   * operator wrote reads claims just as the shipped one does, and narrowing to a known type would
+   * hand it an empty set — its claims would never arrive and its nodes would never be built, which
+   * is exactly the silent omission this wiring exists to close.
+   *
+   * @return the required claim names, empty when the resolver reads none
+   */
+  private Set<String> governanceClaimNames() {
+    return admissionConfig().scopeResolver().requiredClaims();
+  }
+
+  /**
+   * The admission wiring in force, defaulted once so every reader sees the same answer.
+   *
+   * @return the configured admission wiring, or the conservative default
+   */
+  private GatewayRuntimeConfig.AdmissionConfig admissionConfig() {
+    return config
+        .governance()
+        .map(GatewayRuntimeConfig.GovernanceConfig::admission)
+        .orElseGet(GatewayRuntimeConfig.AdmissionConfig::defaults);
   }
 
   /**
@@ -552,14 +591,24 @@ public final class GatewayRuntime {
         identityVerifier.isPresent()
             ? identityVerifier
             : config.externalAdapters().identityVerifier();
+    // The two snapshot sources are retained rather than constructed inline: an operator republishes
+    // a verification-key or tenant-scope snapshot through these same instances, so a revocation
+    // takes effect on the next request instead of waiting for the process to be rebuilt (Doc 37
+    // §VKR, Doc 36 §HPP). Dropping the references is what made applyPublished unreachable.
+    if (verifier.isPresent()) {
+      keySnapshotSource =
+          new PinnedSnapshotSource<>(
+              config.authn().keySnapshot().version(), config.authn().keySnapshot());
+      tenantSnapshotSource =
+          new PinnedSnapshotSource<>(
+              config.authn().tenantSnapshot().version(), config.authn().tenantSnapshot());
+    }
     authentication =
         verifier.isEmpty()
             ? null
             : new AuthenticationService(
-                new PinnedSnapshotSource<>(
-                    config.authn().keySnapshot().version(), config.authn().keySnapshot()),
-                new PinnedSnapshotSource<>(
-                    config.authn().tenantSnapshot().version(), config.authn().tenantSnapshot()),
+                keySnapshotSource,
+                tenantSnapshotSource,
                 verifier.orElseThrow(),
                 new TenantResolver(),
                 new PublishingAuthAudit(publisherHandle, config.eventing().topics().authAudit()),
@@ -865,11 +914,7 @@ public final class GatewayRuntime {
    * @return the admission assembler
    */
   private GovernanceAdmissionAssembler admissionAssembler() {
-    final GatewayRuntimeConfig.AdmissionConfig admission =
-        config
-            .governance()
-            .map(GatewayRuntimeConfig.GovernanceConfig::admission)
-            .orElseGet(GatewayRuntimeConfig.AdmissionConfig::defaults);
+    final GatewayRuntimeConfig.AdmissionConfig admission = admissionConfig();
     return new GovernanceAdmissionAssembler(
         capabilityRegistry,
         new AdmissionCostProjector(
@@ -1315,6 +1360,38 @@ public final class GatewayRuntime {
   public Optional<JwksKeyCache> jwksCache() {
     requireReady();
     return Optional.ofNullable(jwksCache);
+  }
+
+  /**
+   * The verification-key snapshot source, when authentication is wired. Exposed so an operator or
+   * control plane can republish a key snapshot out of band via {@code applyPublished}; the request
+   * path never fetches. Republishing a snapshot whose {@code revokedKeyIds} names a {@code kid}
+   * makes that key resolve as revoked on the next request (Doc 37 §VKR).
+   *
+   * @return the key snapshot source, or empty when no identity verifier is bound
+   * @throws IllegalStateException if the runtime is not ready
+   */
+  public Optional<PinnedSnapshotSource<VerificationKeySnapshot>> keySnapshotSource() {
+    requireReady();
+    return Optional.ofNullable(keySnapshotSource);
+  }
+
+  /**
+   * The tenant-scope snapshot source, when authentication is wired. Exposed so an operator or
+   * control plane can republish a tenant-scope snapshot out of band via {@code applyPublished}, so
+   * that a membership revocation or move takes effect on the next request rather than at the next
+   * process rebuild (Doc 37 §TRF, Doc 36 §HPP).
+   *
+   * <p>The tenant a principal resolves to stays server-derived: republishing changes the {@code
+   * principalId → TenantScope} mapping this node trusts, and never lets a token's claims select a
+   * tenant.
+   *
+   * @return the tenant snapshot source, or empty when no identity verifier is bound
+   * @throws IllegalStateException if the runtime is not ready
+   */
+  public Optional<PinnedSnapshotSource<TenantScopeSnapshot>> tenantSnapshotSource() {
+    requireReady();
+    return Optional.ofNullable(tenantSnapshotSource);
   }
 
   /**

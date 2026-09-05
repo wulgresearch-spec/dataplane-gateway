@@ -71,4 +71,24 @@ public interface PolicyMetrics {
   default void snapshotRejected() {
     // no-op by default
   }
+
+  /**
+   * Records that a generation put in force carries a document attached to a scope this build never
+   * constructs, so the document will never be folded into any effective policy.
+   *
+   * <p>The document is still accepted — refusing it would break a deployment that already publishes
+   * one — but accepting it silently is the actual defect. An operator who authors a restriction and
+   * sees no error reasonably concludes it is being enforced, and here it is not. This counter is
+   * what turns that into something a dashboard can show.
+   *
+   * <p>The label is a {@link PolicyScope}, a closed enum, so cardinality stays bounded as the
+   * javadoc on this interface requires. The scope's identifier is deliberately not published: it is
+   * operator-authored free text and would grow the label space without telling an operator anything
+   * the scope alone does not.
+   *
+   * @param scope the declared scope this build cannot construct
+   */
+  default void unenforceableScope(final PolicyScope scope) {
+    // no-op by default
+  }
 }

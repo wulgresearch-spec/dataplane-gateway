@@ -3,6 +3,7 @@ package io.reliabilityai.gateway.dataplane.app.binding;
 import io.reliabilityai.gateway.canonical.context.PrincipalContext;
 import io.reliabilityai.gateway.canonical.context.TenantContext;
 import io.reliabilityai.gateway.dataplane.governance.api.ScopeChain;
+import java.util.Set;
 
 /**
  * Works out which nodes of the governance hierarchy a request is governed by.
@@ -29,4 +30,24 @@ public interface GovernanceScopeResolver {
    * @return the scope chain the request is governed by
    */
   ScopeChain resolve(PrincipalContext principal, TenantContext tenant);
+
+  /**
+   * The claim names this resolver needs in order to build its nodes.
+   *
+   * <p>Declared here rather than configured alongside the identity verifier because the verifier
+   * must forward exactly what the resolver reads. Two declarations could drift, and a drifted name
+   * fails silently: the claim never arrives, the node is never built, and the policy attached to it
+   * stops participating in the merge with no error, metric or audit entry. Owning the declaration
+   * on this contract means every resolver — including one an operator writes — is asked the same
+   * question and answered by the same wiring.
+   *
+   * <p>The default is empty, which reproduces the tenant-hierarchy-only behaviour: nothing extra is
+   * forwarded and nothing extra is required. A resolver that reads claims must override this, or
+   * the claims it reads will never arrive.
+   *
+   * @return the non-blank claim names this resolver requires; empty when it reads none
+   */
+  default Set<String> requiredClaims() {
+    return Set.of();
+  }
 }

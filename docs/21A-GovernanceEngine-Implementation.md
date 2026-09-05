@@ -105,7 +105,7 @@ failure for a traffic failure and gets neither right.
     │
   USER  /  SERVICE_ACCOUNT
     │
-  REQUEST             caller self-restriction only
+  REQUEST             caller self-restriction only  — declared, NOT enforced (§11.10)
 
   merge direction ────────────────────────────────────────────►  strictly tightening
 ```
@@ -114,6 +114,14 @@ A request's address in this hierarchy is a `ScopeChain`: an ordered, strictly-in
 nodes that govern it, always beginning at `GLOBAL`. Levels a request does not populate are simply absent
 and contribute nothing — which is safe precisely because contributing nothing is the neutral element of
 a most-restrictive-wins merge.
+
+**`REQUEST` is declared but not enforced by the shipped runtime.** The level exists in
+`PolicyScope` and `ScopeChain.Builder` can express it, but no code path in this build ever puts a
+`REQUEST` node into a chain. A document authored against it compiles, installs and is stored, and
+then contributes nothing, because the fold visits only the refs a chain actually contains. Such a
+document is still accepted — refusing it would break a deployment that already publishes one — but
+it is no longer silent: each generation put in force carrying one increments
+`PolicyMetrics.unenforceableScope(REQUEST)`. Treat the level as reserved. See §11.10.
 
 **Precedence tiers** (`PolicyDomain`, declaration order = evaluation order):
 
@@ -400,6 +408,17 @@ Coverage against the mission's required list:
    enforcement implementations now exist. That is deliberate — it kept this change non-breaking and
    let the whole existing suite stay green — but it is duplication that should not survive long.
 
+10. **`PolicyScope.REQUEST` is declared but never constructed.** The policy model offers the level
+   and the compiler accepts documents attached to it; nothing in this build ever builds the node, so
+   such a document is stored and never folded into any effective policy. This is a semantics gap,
+   not an enforcement bypass: a document can only ever *tighten*, so its absence loses a restriction
+   the operator asked for rather than granting access. The gap is now observable —
+   `PolicyMetrics.unenforceableScope(PolicyScope)` fires once per installed generation that carries
+   one, and `InProcessPolicyMetrics.unenforceableScopes(scope)` reads it back — but it is not
+   closed. Closing it means deciding what a caller-supplied restriction may say and how it is
+   authenticated, which is a design question rather than a defect fix. `UnenforceableScopeTest`
+   pins the current behaviour: accepted, stored, counted, not enforced.
+
 ---
 
 ## 12. Remaining blockers
@@ -420,8 +439,9 @@ B1 and B2 are environmental and gate *verification*, not correctness. B3, B4 and
 
 **Widen the governance seam so the pipeline can ask the full question.**
 
-Everything else is downstream of B4. The engine can already enforce all 31 policy types across nine
-scopes; live traffic currently reaches roughly a third of them because the frozen façade cannot carry
+Everything else is downstream of B4. The engine can already enforce all 31 policy types across every
+scope it constructs (`REQUEST` is declared but never constructed, §11.10); live traffic currently
+reaches roughly a third of them because the frozen façade cannot carry
 the request's shape. The work, in order:
 
 1. Extend the data-plane governance seam so `RequestPipeline` builds a `PolicyRequest` from the inbound

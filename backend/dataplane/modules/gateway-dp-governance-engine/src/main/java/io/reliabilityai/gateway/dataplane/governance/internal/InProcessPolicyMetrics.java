@@ -2,6 +2,7 @@ package io.reliabilityai.gateway.dataplane.governance.internal;
 
 import io.reliabilityai.gateway.dataplane.governance.api.PolicyDomain;
 import io.reliabilityai.gateway.dataplane.governance.api.PolicyMetrics;
+import io.reliabilityai.gateway.dataplane.governance.api.PolicyScope;
 import io.reliabilityai.gateway.dataplane.governance.api.Verdict;
 import java.util.EnumMap;
 import java.util.Map;
@@ -40,6 +41,7 @@ public final class InProcessPolicyMetrics implements PolicyMetrics {
   private final LongAdder installs = new LongAdder();
   private final LongAdder rollbacks = new LongAdder();
   private final LongAdder rejections = new LongAdder();
+  private final Map<PolicyScope, LongAdder> unenforceableScopes = new EnumMap<>(PolicyScope.class);
 
   /** Creates the counter set with every dimension pre-registered. */
   public InProcessPolicyMetrics() {
@@ -48,6 +50,9 @@ public final class InProcessPolicyMetrics implements PolicyMetrics {
     }
     for (final PolicyDomain domain : PolicyDomain.values()) {
       bindings.put(domain, new LongAdder());
+    }
+    for (final PolicyScope scope : PolicyScope.values()) {
+      unenforceableScopes.put(scope, new LongAdder());
     }
   }
 
@@ -95,6 +100,11 @@ public final class InProcessPolicyMetrics implements PolicyMetrics {
   @Override
   public void snapshotRejected() {
     rejections.increment();
+  }
+
+  @Override
+  public void unenforceableScope(final PolicyScope scope) {
+    unenforceableScopes.get(scope).increment();
   }
 
   /**
@@ -206,5 +216,19 @@ public final class InProcessPolicyMetrics implements PolicyMetrics {
    */
   public long rejections() {
     return rejections.sum();
+  }
+
+  /**
+   * Generations put in force carrying a document attached to a scope this build never constructs.
+   *
+   * <p>A non-zero reading means an operator has authored a restriction that is stored and reported
+   * as accepted but folds into nothing. It is a configuration signal, not a health signal: the node
+   * is enforcing exactly what it always was, and the surprise is on the authoring side.
+   *
+   * @param scope the declared scope
+   * @return the count
+   */
+  public long unenforceableScopes(final PolicyScope scope) {
+    return unenforceableScopes.get(scope).sum();
   }
 }

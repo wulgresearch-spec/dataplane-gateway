@@ -41,6 +41,13 @@ public enum AuthenticationFailureReason {
   MALFORMED_TOKEN("malformed-token"),
   /** Multiple/ambiguous credentials; the node never guesses (Doc 37 §TIM TIM-2). */
   AMBIGUOUS_IDENTITY("ambiguous-identity"),
+  /**
+   * A claim the deployment declared security-relevant is absent, blank, or malformed. Refusing is
+   * the only safe answer: the governance node that claim addresses would otherwise be omitted from
+   * the scope chain, and because the policy merge only ever tightens, an omitted node silently
+   * yields a <b>less</b> restrictive effective policy than the operator authored.
+   */
+  MISSING_REQUIRED_CLAIM("missing-required-claim"),
   /** No tenant-scope snapshot resident to resolve scope (Doc 37 §TRF TRF-4). */
   TENANT_SNAPSHOT_UNAVAILABLE("tenant-snapshot-unavailable"),
   /** Authenticated principal but no resolvable tenant scope — distinct terminal (Doc 37 TRF-3). */

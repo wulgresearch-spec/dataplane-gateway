@@ -4,7 +4,9 @@ import io.reliabilityai.gateway.canonical.context.PrincipalContext;
 import io.reliabilityai.gateway.canonical.context.TenantContext;
 import io.reliabilityai.gateway.common.Preconditions;
 import io.reliabilityai.gateway.dataplane.governance.api.ScopeChain;
+import java.util.LinkedHashSet;
 import java.util.Optional;
+import java.util.Set;
 
 /**
  * Resolves the governance hierarchy address from the tenant scope plus operator-named identity
@@ -70,6 +72,28 @@ public final class ClaimBasedScopeResolver implements GovernanceScopeResolver {
    */
   public static ClaimBasedScopeResolver tenantOnly() {
     return new ClaimBasedScopeResolver("", "", Optional.empty());
+  }
+
+  /**
+   * The claim names this resolver needs in order to build its key and principal nodes.
+   *
+   * <p>Exposed so the identity verifier can be told to forward — and require — exactly these, from
+   * this one declaration. Configuring the names twice would let the two drift, and a drifted name
+   * fails silently: the claim never arrives, the node is never built, and the policy attached to it
+   * never participates in the merge.
+   *
+   * @return the non-blank claim names, empty when this resolver scopes to the tenant hierarchy only
+   */
+  @Override
+  public Set<String> requiredClaims() {
+    final Set<String> names = new LinkedHashSet<>();
+    if (!apiKeyClaim.isBlank()) {
+      names.add(apiKeyClaim);
+    }
+    if (!principalTypeClaim.isBlank()) {
+      names.add(principalTypeClaim);
+    }
+    return Set.copyOf(names);
   }
 
   @Override
