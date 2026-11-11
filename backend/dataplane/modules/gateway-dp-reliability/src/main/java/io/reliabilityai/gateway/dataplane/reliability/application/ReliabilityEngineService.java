@@ -91,15 +91,12 @@ public final class ReliabilityEngineService implements ReliabilityEnginePort {
   public InvocationResult execute(final InvocationPlan plan) {
     Preconditions.requireNonNull(plan, "plan");
     final List<AttemptRecord> history = new ArrayList<>();
-    CanonicalError lastError = null;
     try {
       return run(plan, history);
     } catch (final RuntimeException fault) {
       // Fail-closed backstop (Doc 20 §RE-INV / AD-016): a misbehaving injected port must never
-      // throw
-      // out of the engine — surface, never propagate. `lastError`/`history` captured before the
-      // fault.
-      return surfaced(ReliabilityFailureReason.NON_RETRYABLE, lastError, history);
+      // throw out of the engine. Preserve recorded attempts; no error was captured here.
+      return surfaced(ReliabilityFailureReason.NON_RETRYABLE, null, history);
     }
   }
 
@@ -207,9 +204,6 @@ public final class ReliabilityEngineService implements ReliabilityEnginePort {
               new AttemptRecord(
                   history.size() + 1, routeRef, classification.outcomeClass(), error.category()));
           switch (classification.action()) {
-            case SURFACE -> {
-              return surfaced(ReliabilityFailureReason.NON_RETRYABLE, error, history);
-            }
             case FAILOVER -> {
               safeMetric(metrics::failover);
               failover = true;
@@ -228,6 +222,7 @@ public final class ReliabilityEngineService implements ReliabilityEnginePort {
               }
               // else: loop and retry the same candidate
             }
+            // SURFACE and any future/unrecognized action must both refuse, never retry.
             default -> {
               return surfaced(ReliabilityFailureReason.NON_RETRYABLE, error, history);
             }
