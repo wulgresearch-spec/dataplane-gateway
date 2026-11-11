@@ -29,6 +29,8 @@ public final class BoundedExecutionDedup {
    */
   private static final class BoundedLruMap extends LinkedHashMap<String, Boolean> {
 
+    private static final long serialVersionUID = 1L;
+
     private final int capacity;
 
     private BoundedLruMap(final int capacity) {
