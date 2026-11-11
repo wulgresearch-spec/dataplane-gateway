@@ -3,6 +3,7 @@ package io.reliabilityai.gateway.dataplane.ingress.internal;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 
 /**
@@ -266,7 +267,7 @@ public final class IngressJson {
         case '\t' -> out.append("\\t");
         default -> {
           if (c < 0x20) {
-            out.append(String.format("\\u%04x", (int) c));
+            out.append(String.format(Locale.ROOT, "\\u%04x", (int) c));
           } else {
             out.append(c);
           }
