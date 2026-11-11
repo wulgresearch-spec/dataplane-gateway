@@ -36,4 +36,25 @@
       <scope>test</scope>
     </dependency>
   </dependencies>
+  <!--
+    Plugin Runtime's System.nanoTime() uses are elapsed-time measurements for sandbox
+    resource usage and streaming telemetry, not ambient time in policy decision cores.
+    Override only the custom signature list to allow that one monotonic primitive.
+    The inherited jdk-unsafe, jdk-deprecated, and jdk-non-portable bundles remain
+    active, as do every other custom forbidden signature in the module-specific file.
+    No parent or other module's forbidden API configuration is changed.
+  -->
+  <build>
+    <plugins>
+      <plugin>
+        <groupId>de.thetaphi</groupId>
+        <artifactId>forbiddenapis</artifactId>
+        <configuration>
+          <signaturesFiles combine.self="override">
+            <signaturesFile>${build-tools.dir}/forbidden-signatures-plugin-runtime.txt</signaturesFile>
+          </signaturesFiles>
+        </configuration>
+      </plugin>
+    </plugins>
+  </build>
 </project>
