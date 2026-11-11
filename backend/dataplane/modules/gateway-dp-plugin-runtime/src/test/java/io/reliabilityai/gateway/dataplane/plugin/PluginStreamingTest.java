@@ -293,8 +293,7 @@ class PluginStreamingTest {
 
     final PluginEvent event = channel.next();
     assertThat(event).isInstanceOf(PluginEvent.Failed.class);
-    assertThat(((PluginEvent.Failed) event).error().kind())
-        .isEqualTo(PluginFailureKind.CANCELLED);
+    assertThat(((PluginEvent.Failed) event).error().kind()).isEqualTo(PluginFailureKind.CANCELLED);
     assertThat(channel.buffered()).isZero();
   }
 

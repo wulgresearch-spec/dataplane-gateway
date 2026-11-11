@@ -164,8 +164,7 @@ public final class ProcessPluginAdapter implements ToolPlugin {
    */
   private static String readReplyLine(final Process child) throws IOException {
     try (BufferedReader reader =
-        new BufferedReader(
-            new InputStreamReader(child.getInputStream(), StandardCharsets.UTF_8))) {
+        new BufferedReader(new InputStreamReader(child.getInputStream(), StandardCharsets.UTF_8))) {
       final StringBuilder line = new StringBuilder();
       int character;
       while ((character = reader.read()) >= 0) {

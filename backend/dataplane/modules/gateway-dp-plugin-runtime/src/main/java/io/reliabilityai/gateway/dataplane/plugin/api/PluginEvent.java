@@ -160,5 +160,4 @@ public sealed interface PluginEvent
       return true;
     }
   }
-
 }
