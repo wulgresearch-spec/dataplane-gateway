@@ -24,6 +24,25 @@ public final class BoundedExecutionDedup {
   private final Map<String, Boolean> seen;
 
   /**
+   * Access-ordered map with instance-scoped capacity. A named static class makes ownership and
+   * capture explicit without changing eviction, synchronization, or deduplication semantics.
+   */
+  private static final class BoundedLruMap extends LinkedHashMap<String, Boolean> {
+
+    private final int capacity;
+
+    private BoundedLruMap(final int capacity) {
+      super(16, 0.75f, true);
+      this.capacity = capacity;
+    }
+
+    @Override
+    protected boolean removeEldestEntry(final Map.Entry<String, Boolean> eldest) {
+      return size() > capacity;
+    }
+  }
+
+  /**
    * Creates a de-duplicator with the given capacity.
    *
    * @param capacity the maximum number of tracked keys (operational baseline; must be positive)
@@ -32,13 +51,7 @@ public final class BoundedExecutionDedup {
     if (capacity <= 0) {
       throw new IllegalArgumentException("capacity must be positive: " + capacity);
     }
-    this.seen =
-        new LinkedHashMap<>(16, 0.75f, true) {
-          @Override
-          protected boolean removeEldestEntry(final Map.Entry<String, Boolean> eldest) {
-            return size() > capacity;
-          }
-        };
+    this.seen = new BoundedLruMap(capacity);
   }
 
   /**
