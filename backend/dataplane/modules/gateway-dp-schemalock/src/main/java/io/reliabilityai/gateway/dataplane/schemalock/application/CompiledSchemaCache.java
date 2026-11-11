@@ -33,7 +33,7 @@ public final class CompiledSchemaCache {
         new LinkedHashMap<>(16, 0.75f, true) {
           @Override
           protected boolean removeEldestEntry(final Map.Entry<SchemaId, CompiledSchema> eldest) {
-            return size() > CompiledSchemaCache.this.capacity;
+            return super.size() > CompiledSchemaCache.this.capacity;
           }
         };
   }
