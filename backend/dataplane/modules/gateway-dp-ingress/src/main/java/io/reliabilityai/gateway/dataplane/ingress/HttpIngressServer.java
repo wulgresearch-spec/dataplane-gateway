@@ -528,7 +528,7 @@ public final class HttpIngressServer {
     if (value instanceof Double number) {
       params.put(
           name,
-          number == Math.rint(number)
+          Double.compare(number, Math.rint(number)) == 0
               ? String.valueOf(number.longValue())
               : String.valueOf(number));
     }
