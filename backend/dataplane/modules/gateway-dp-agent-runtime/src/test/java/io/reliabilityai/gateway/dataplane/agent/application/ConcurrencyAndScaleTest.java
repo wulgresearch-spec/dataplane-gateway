@@ -292,8 +292,7 @@ class ConcurrencyAndScaleTest {
     // Hold one run's lease as a busy node would. Other nodes must make progress while
     // that run stays inaccessible; a pull scheduler does not promise work to every thread.
     final RunId heldRun = RunId.of("r-0");
-    assertThat(runs.claim(heldRun, "busy-node", clock.now(), clock.now().plusSeconds(60)))
-        .isTrue();
+    assertThat(runs.claim(heldRun, "busy-node", clock.now(), clock.now().plusSeconds(60))).isTrue();
 
     final java.util.Map<String, Integer> claimsByNode = new ConcurrentHashMap<>();
     final ExecutorService pool = Executors.newFixedThreadPool(4);
