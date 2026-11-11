@@ -1,7 +1,12 @@
 package io.reliabilityai.gateway.dataplane.plugin;
 
 import java.io.BufferedReader;
+import java.io.FileDescriptor;
+import java.io.FileOutputStream;
+import java.io.IOException;
 import java.io.InputStreamReader;
+import java.io.OutputStreamWriter;
+import java.io.Writer;
 import java.nio.charset.StandardCharsets;
 import java.util.Base64;
 
@@ -42,21 +47,31 @@ public final class EchoPluginProcess {
 
     final String[] parts = line.split("\t", -1);
     if (parts.length < 3 || !"INVOKE".equals(parts[0])) {
-      System.out.println("ERR\tmalformed-request");
-      System.out.flush();
+      writeReply("ERR\tmalformed-request");
       return;
     }
     if ("fail".equals(mode)) {
-      System.out.println("ERR\tplugin-said-no");
-      System.out.flush();
+      writeReply("ERR\tplugin-said-no");
       return;
     }
 
     final String arguments =
         new String(Base64.getDecoder().decode(parts[2]), StandardCharsets.UTF_8);
     final String output = "child-echo:" + parts[1] + ":" + arguments;
-    System.out.println(
+    writeReply(
         "OK\t" + Base64.getEncoder().encodeToString(output.getBytes(StandardCharsets.UTF_8)));
-    System.out.flush();
+  }
+
+  /**
+   * The child writes a protocol reply, not a log message. Access the standard output descriptor
+   * directly to keep the global ban on System.out logging intact.
+   */
+  private static void writeReply(final String line) throws IOException {
+    try (Writer stdout =
+        new OutputStreamWriter(new FileOutputStream(FileDescriptor.out), StandardCharsets.UTF_8)) {
+      stdout.write(line);
+      stdout.write('\n');
+      stdout.flush();
+    }
   }
 }
