@@ -4,9 +4,9 @@ name: ci
 
 on:
   push:
-    branches: [ main ]
+    branches: [ main, develop ]
   pull_request:
-    branches: [ main ]
+    branches: [ main, develop ]
 
 jobs:
   build-and-gate:
@@ -31,10 +31,10 @@ jobs:
         run: mvn -B -e verify
 
       # M7 fix: mutation is slow and gave little signal double-building on every PR. Run PIT ONCE,
-      # only on push to main, reusing the compiled tree via the pitest goal (no second full verify).
+      # on pushes to an integration branch, reusing the compiled tree (no second full verify).
       # Doc 38 §16 / Doc 15 §G.1: mutation testing (≥ threshold per module).
-      - name: Mutation testing (main only, Doc 15 §G.1)
-        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+      - name: Mutation testing (integration branch, Doc 15 §G.1)
+        if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop')
         run: mvn -B -Pmutation org.pitest:pitest-maven:mutationCoverage
 
       # Doc 33 §CMA / Doc 07 §9: contract + ArchUnit tests are part of `verify` above;
