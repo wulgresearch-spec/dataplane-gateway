@@ -289,6 +289,12 @@ class ConcurrencyAndScaleTest {
       runtime.start(RunId.of("r-" + i), plan, security("chat"), plan.bounds(), 1_000_000L);
     }
 
+    // Hold one run's lease as a busy node would. Other nodes must make progress while
+    // that run stays inaccessible; a pull scheduler does not promise work to every thread.
+    final RunId heldRun = RunId.of("r-0");
+    assertThat(runs.claim(heldRun, "busy-node", clock.now(), clock.now().plusSeconds(60)))
+        .isTrue();
+
     final java.util.Map<String, Integer> claimsByNode = new ConcurrentHashMap<>();
     final ExecutorService pool = Executors.newFixedThreadPool(4);
     final List<java.util.concurrent.Future<?>> workers = new ArrayList<>();
@@ -311,9 +317,28 @@ class ConcurrencyAndScaleTest {
     }
     pool.shutdownNow();
 
+    // Every other run completes even though the busy node still holds one lease.
+    assertThat(runs.unfinished(TENANT, 500)).containsExactly(heldRun);
+    assertThat(countOf(runs.load(heldRun).orElseThrow(), RunEvent.StepCompleted.class)).isZero();
+    assertThat(claimsByNode.values()).anyMatch(claims -> claims > 0);
+
+    // Once the busy node releases its lease, the remaining run completes exactly once.
+    runs.release(heldRun, "busy-node");
+    final RunScheduler recovering =
+        new RunScheduler(runs, executor, clock, "recovering-node", Duration.ofSeconds(30), 16);
+    for (int pass = 0; pass < 5 && !runs.unfinished(TENANT, 1).isEmpty(); pass++) {
+      recovering.pass(TENANT);
+    }
     assertThat(runs.unfinished(TENANT, 500)).isEmpty();
-    // Every node did some work; none was starved by the others holding leases.
-    assertThat(claimsByNode.values()).allMatch(claims -> claims > 0);
+    for (int i = 0; i < 200; i++) {
+      final RunHistory history = runs.load(RunId.of("r-" + i)).orElseThrow();
+      assertThat(countOf(history, RunEvent.StepCompleted.class))
+          .as("run %d completed exactly two steps", i)
+          .isEqualTo(2);
+      assertThat(countOf(history, RunEvent.RunTerminated.class))
+          .as("run %d terminated exactly once", i)
+          .isEqualTo(1);
+    }
   }
 
   @Test
