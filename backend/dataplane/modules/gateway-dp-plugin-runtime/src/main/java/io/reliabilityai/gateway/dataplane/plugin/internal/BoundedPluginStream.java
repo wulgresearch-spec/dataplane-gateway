@@ -120,11 +120,13 @@ public final class BoundedPluginStream implements PluginStream, PluginEventSink 
     if (waiting != null) {
       waiting.interrupt();
     }
-    // Drain, then plant the terminal. Draining is what makes the offer below certain to fit;
-    // without
-    // it a full queue would swallow the terminal and leave a consumer blocked in take() forever.
+    // Drain and plant the terminal. A producer already blocked in put() may enqueue after
+    // clear(), so retry if a late event fills the queue. New emits are refused after cancellation.
     events.clear();
-    events.offer(new PluginEvent.Failed(ToolError.of(PluginFailureKind.CANCELLED)));
+    final PluginEvent cancellation = new PluginEvent.Failed(ToolError.of(PluginFailureKind.CANCELLED));
+    while (!events.offer(cancellation)) {
+      events.poll();
+    }
   }
 
   /**
