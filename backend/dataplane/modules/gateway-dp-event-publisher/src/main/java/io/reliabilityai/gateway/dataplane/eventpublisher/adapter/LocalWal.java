@@ -529,7 +529,8 @@ public final class LocalWal implements WalPort, AutoCloseable {
       stream
           .filter(
               p -> {
-                final String name = Objects.requireNonNull(p.getFileName(), "WAL segment filename").toString();
+                final String name =
+                    Objects.requireNonNull(p.getFileName(), "WAL segment filename").toString();
                 return name.startsWith(SEGMENT_PREFIX) && name.endsWith(SEGMENT_SUFFIX);
               })
           .sorted()
