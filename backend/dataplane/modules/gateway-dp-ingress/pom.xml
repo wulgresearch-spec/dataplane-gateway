@@ -31,4 +31,25 @@
       <scope>test</scope>
     </dependency>
   </dependencies>
+  <!--
+    Doc 30 explicitly selects the JDK 21 jdk.httpserver module for this transport
+    adapter. The generic jdk-non-portable signature bundle rejects its exported
+    com.sun.net.httpserver API, so this module exempts only that signature category.
+    Keep the inherited project-specific forbidden signatures plus JDK unsafe and
+    deprecated checks. Other modules retain all three bundled checks.
+  -->
+  <build>
+    <plugins>
+      <plugin>
+        <groupId>de.thetaphi</groupId>
+        <artifactId>forbiddenapis</artifactId>
+        <configuration>
+          <bundledSignatures combine.self="override">
+            <bundledSignature>jdk-unsafe</bundledSignature>
+            <bundledSignature>jdk-deprecated</bundledSignature>
+          </bundledSignatures>
+        </configuration>
+      </plugin>
+    </plugins>
+  </build>
 </project>
