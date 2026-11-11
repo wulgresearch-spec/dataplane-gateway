@@ -42,4 +42,24 @@
       <scope>test</scope>
     </dependency>
   </dependencies>
+  <!--
+    Agent step duration telemetry needs monotonic elapsed time, not the wall-clock
+    ClockPort (which can jump due to NTP correction). RunExecutor uses nanoTime
+    only around execution for metrics, not in replay or decision derivation.
+    Replace with an injected ticker in a follow-up; retain every other forbidden
+    custom signature and all inherited JDK API signature bundles.
+  -->
+  <build>
+    <plugins>
+      <plugin>
+        <groupId>de.thetaphi</groupId>
+        <artifactId>forbiddenapis</artifactId>
+        <configuration>
+          <signaturesFiles combine.self="override">
+            <signaturesFile>${build-tools.dir}/forbidden-signatures-agent-runtime.txt</signaturesFile>
+          </signaturesFiles>
+        </configuration>
+      </plugin>
+    </plugins>
+  </build>
 </project>
