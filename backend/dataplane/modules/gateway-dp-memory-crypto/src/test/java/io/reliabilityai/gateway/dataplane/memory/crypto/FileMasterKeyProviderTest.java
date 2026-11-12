@@ -1,10 +1,12 @@
 package io.reliabilityai.gateway.dataplane.memory.crypto;
 
+import static io.reliabilityai.gateway.dataplane.memory.crypto.CryptoFixtures.writePrivateKeyring;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.PosixFilePermissions;
 import java.security.SecureRandom;
 import java.util.Base64;
 import java.util.Set;
@@ -132,12 +134,26 @@ final class FileMasterKeyProviderTest {
       throws Exception {
     final Path keyring = write(directory, "primary = v1\nv1 = " + key() + "\n");
     final FileMasterKeyProvider provider = new FileMasterKeyProvider(keyring);
-    Files.writeString(keyring, "primary = v9\nv9 = " + key() + "\n");
+    writePrivateKeyring(keyring, "primary = v9\nv9 = " + key() + "\n");
 
     // Re-reading per operation would let anyone who can write that file change which key seals the
     // next record, at a moment of their choosing rather than an operator's.
     assertThat(provider.primaryVersion()).isEqualTo("v1");
     assertThat(provider.keyFor("v9")).isEmpty();
+  }
+
+  @Test
+  @DisplayName("a group- or world-readable keyring is rejected on POSIX")
+  void aGroupReadableKeyringIsRefusedOnPosix(@TempDir final Path directory) throws Exception {
+    final Path keyring = write(directory, "primary = v1\nv1 = " + key() + "\n");
+    try {
+      Files.setPosixFilePermissions(keyring, PosixFilePermissions.fromString("rw-r--r--"));
+    } catch (final UnsupportedOperationException notPosix) {
+      return;
+    }
+    assertThatThrownBy(() -> new FileMasterKeyProvider(keyring))
+        .isInstanceOf(KeyUnavailableException.class)
+        .hasMessageContaining("accessible beyond its owner");
   }
 
   /**
@@ -149,9 +165,7 @@ final class FileMasterKeyProviderTest {
    * @throws Exception when it cannot be written
    */
   private static Path write(final Path directory, final String content) throws Exception {
-    final Path keyring = directory.resolve("keys");
-    Files.writeString(keyring, content);
-    return keyring;
+    return writePrivateKeyring(directory.resolve("keys"), content);
   }
 
   /**

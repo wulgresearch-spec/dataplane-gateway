@@ -3,6 +3,11 @@ package io.reliabilityai.gateway.dataplane.memory.crypto;
 import io.reliabilityai.gateway.canonical.identity.PrincipalId;
 import io.reliabilityai.gateway.canonical.identity.TenantScope;
 import io.reliabilityai.gateway.dataplane.memory.api.MemoryScope;
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.attribute.PosixFilePermissions;
 import java.security.SecureRandom;
 import java.util.Arrays;
 import java.util.Base64;
@@ -29,6 +34,31 @@ final class CryptoFixtures {
   static final MemoryScope ACME_ALICE_DRAFTS = MemoryScope.ofPartition(ACME, ALICE, "drafts");
 
   private CryptoFixtures() {}
+
+  /**
+   * Writes test keyrings with owner-only permissions wherever POSIX permissions are supported.
+   *
+   * <p>Create with restrictive mode before writing any key material. Rewriting an existing keyring
+   * during rotation preserves the original file mode. Non-POSIX platforms use their native mode.
+   *
+   * @param keyring where the test keyring lives
+   * @param content the keyring contents
+   * @return the keyring path
+   * @throws IOException if the keyring cannot be created or written
+   */
+  static Path writePrivateKeyring(final Path keyring, final String content) throws IOException {
+    if (Files.notExists(keyring)) {
+      try {
+        Files.createFile(
+            keyring,
+            PosixFilePermissions.asFileAttribute(PosixFilePermissions.fromString("rw-------")));
+      } catch (final UnsupportedOperationException notPosix) {
+        Files.createFile(keyring);
+      }
+    }
+    Files.writeString(keyring, content, StandardCharsets.UTF_8);
+    return keyring;
+  }
 
   /**
    * A key provider held in memory, so tests need no filesystem.
