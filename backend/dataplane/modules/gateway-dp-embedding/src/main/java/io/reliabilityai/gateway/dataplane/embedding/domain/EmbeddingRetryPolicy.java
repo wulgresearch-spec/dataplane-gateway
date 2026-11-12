@@ -2,7 +2,7 @@ package io.reliabilityai.gateway.dataplane.embedding.domain;
 
 import io.reliabilityai.gateway.common.Preconditions;
 import io.reliabilityai.gateway.dataplane.embedding.api.EmbeddingFailure;
-import java.util.concurrent.ThreadLocalRandom;
+import java.security.SecureRandom;
 
 /**
  * When to try again, and how long to wait (AD-030 §7).
@@ -73,8 +73,10 @@ public final class EmbeddingRetryPolicy {
    * @return the default policy
    */
   public static EmbeddingRetryPolicy defaults() {
-    return new EmbeddingRetryPolicy(
-        3, 100L, 2_000L, () -> ThreadLocalRandom.current().nextDouble());
+    // Backoff jitter is operational timing, not an embedding decision input.
+    // The injected Jitter constructor remains available for deterministic tests.
+    final SecureRandom random = new SecureRandom();
+    return new EmbeddingRetryPolicy(3, 100L, 2_000L, random::nextDouble);
   }
 
   /**
