@@ -210,8 +210,8 @@ public final class EmbeddingPipeline {
       final EmbeddingRequest piece,
       final EmbeddingModel model) {
     int attempts = 0;
-    EmbeddingFailure lastReason = EmbeddingFailure.INTERNAL;
-    String lastDetail = "no attempt was made";
+    EmbeddingFailure lastReason;
+    String lastDetail;
     while (true) {
       attempts++;
       final long started = System.nanoTime();

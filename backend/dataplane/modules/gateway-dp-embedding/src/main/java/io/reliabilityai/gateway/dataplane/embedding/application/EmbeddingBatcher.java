@@ -205,17 +205,29 @@ public final class EmbeddingBatcher implements AutoCloseable {
     }
     final GroupKey key = new GroupKey(tenant, modelId, purpose);
     final Group group = groups.computeIfAbsent(key, ignored -> new Group());
+    final int bytes = text.getBytes(StandardCharsets.UTF_8).length;
     final int depth;
     List<Pending> ready = null;
+    List<Pending> overflow = null;
     group.lock.lock();
     try {
+      // Drain first when adding this input would cross the provider's byte limit.
+      // Like split(), an oversized input still travels alone for the provider to judge.
+      if (!group.pending.isEmpty() && (long) group.pendingBytes + bytes > maxPayloadBytes) {
+        ready = group.drain();
+      }
       if (group.pending.isEmpty()) {
         group.oldestNanos = System.nanoTime();
       }
       group.pending.add(new Pending(text, future));
+      group.pendingBytes += bytes;
       depth = queued.incrementAndGet();
-      if (group.pending.size() >= maxBatchSize) {
-        ready = group.drain();
+      if (group.pending.size() >= maxBatchSize || group.pendingBytes >= maxPayloadBytes) {
+        if (ready == null) {
+          ready = group.drain();
+        } else {
+          overflow = group.drain();
+        }
       }
     } finally {
       group.lock.unlock();
@@ -226,6 +238,9 @@ public final class EmbeddingBatcher implements AutoCloseable {
     // network.
     if (ready != null) {
       run(key, ready);
+    }
+    if (overflow != null) {
+      run(key, overflow);
     }
     return future;
   }
@@ -386,6 +401,8 @@ public final class EmbeddingBatcher implements AutoCloseable {
 
     private final List<Pending> pending = new ArrayList<>();
 
+    private int pendingBytes;
+
     private long oldestNanos = System.nanoTime();
 
     /**
@@ -396,6 +413,7 @@ public final class EmbeddingBatcher implements AutoCloseable {
     private List<Pending> drain() {
       final List<Pending> drained = List.copyOf(pending);
       pending.clear();
+      pendingBytes = 0;
       oldestNanos = System.nanoTime();
       return drained;
     }
