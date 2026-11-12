@@ -85,6 +85,32 @@ class OpenAiMappingTest {
   }
 
   @Test
+  void dropsNonFiniteNumbersInsteadOfEmittingInvalidJson() {
+    final String body =
+        requestMapper.toChatCompletionsBody(
+            OpenAiFixture.request(
+                Map.of(
+                    OpenAiRequestMapper.PARAM_TEMPERATURE, "NaN",
+                    OpenAiRequestMapper.PARAM_TOP_P, "Infinity")),
+            OpenAiFixture.capabilities(Set.of()),
+            false);
+
+    assertThat(Json.parseObject(body)).doesNotContainKeys("temperature", "top_p");
+  }
+
+  @Test
+  void doesNotSaturateAnOutOfRangeIntegerIntoLongMaxValue() {
+    final String body =
+        requestMapper.toChatCompletionsBody(
+            OpenAiFixture.request(Map.of(OpenAiRequestMapper.PARAM_MAX_TOKENS, "1e20")),
+            OpenAiFixture.capabilities(Set.of()),
+            false);
+
+    assertThat(body).contains("\"max_tokens\":1.0E20");
+    assertThat(body).doesNotContain("9223372036854775807");
+  }
+
+  @Test
   void enablesJsonModeWhenRequested() {
     final String body =
         requestMapper.toChatCompletionsBody(
