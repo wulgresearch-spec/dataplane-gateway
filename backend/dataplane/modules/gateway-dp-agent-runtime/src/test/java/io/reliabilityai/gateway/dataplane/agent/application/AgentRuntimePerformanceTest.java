@@ -36,9 +36,8 @@ import org.junit.jupiter.api.io.TempDir;
  *
  * <p>The assertions are deliberately loose — an order of magnitude, not a percentage — because a
  * unit test on shared CI hardware cannot hold a tight latency bound without becoming flaky, and a
- * flaky performance test is worse than none. The numbers logged alongside them are the
- * deliverable; the assertions only catch a regression large enough to mean something is
- * structurally wrong.
+ * flaky performance test is worse than none. The numbers logged alongside them are the deliverable;
+ * the assertions only catch a regression large enough to mean something is structurally wrong.
  *
  * <p>Each measurement is preceded by a warm-up so the figure is not dominated by class loading and
  * JIT, and the same work is then timed over enough iterations to be meaningful.
