@@ -1,10 +1,10 @@
 package io.reliabilityai.gateway.dataplane.memory.crypto;
 
-import static io.reliabilityai.gateway.dataplane.memory.crypto.CryptoFixtures.writePrivateKeyring;
 import static io.reliabilityai.gateway.dataplane.memory.crypto.CryptoFixtures.ACME_ALICE;
 import static io.reliabilityai.gateway.dataplane.memory.crypto.CryptoFixtures.ACME_BOB;
 import static io.reliabilityai.gateway.dataplane.memory.crypto.CryptoFixtures.ACME_TENANT;
 import static io.reliabilityai.gateway.dataplane.memory.crypto.CryptoFixtures.GLOBEX_TENANT;
+import static io.reliabilityai.gateway.dataplane.memory.crypto.CryptoFixtures.writePrivateKeyring;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import io.reliabilityai.gateway.dataplane.memory.api.MemoryCryptoPort;
