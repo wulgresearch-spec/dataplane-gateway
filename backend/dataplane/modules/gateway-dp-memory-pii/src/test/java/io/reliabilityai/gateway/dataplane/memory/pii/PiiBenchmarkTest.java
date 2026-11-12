@@ -229,8 +229,7 @@ final class PiiBenchmarkTest {
     }
     final long elapsed = System.nanoTime() - started;
     final double perOp = elapsed / (double) iterations;
-    reportBench(
-        "  BENCH  %-20s %9.2f us/op  %10.0f scans/sec", label, perOp / 1000.0, 1e9 / perOp);
+    reportBench("  BENCH  %-20s %9.2f us/op  %10.0f scans/sec", label, perOp / 1000.0, 1e9 / perOp);
     assertThat(perOp).isLessThan(TimeUnit.SECONDS.toNanos(1));
   }
 
