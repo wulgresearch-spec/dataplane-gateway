@@ -51,7 +51,6 @@ import java.util.Optional;
  */
 public final class MemoryReadPipeline {
 
-  private final MemoryPolicyStore policies;
   private final MemoryGovernancePort governance;
   private final MemoryStorePort store;
   private final VectorIndexPort index;
@@ -87,7 +86,8 @@ public final class MemoryReadPipeline {
       final MemoryAuditPort audit,
       final MemoryMetricsPort metrics,
       final ClockPort clock) {
-    this.policies = Preconditions.requireNonNull(policies, "policies");
+    // Preserve the constructor contract; the read path delegates policy decisions to governance.
+    Preconditions.requireNonNull(policies, "policies");
     this.governance = Preconditions.requireNonNull(governance, "governance");
     this.store = Preconditions.requireNonNull(store, "store");
     this.index = Preconditions.requireNonNull(index, "index");
