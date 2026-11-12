@@ -7,10 +7,12 @@ import java.lang.management.ManagementFactory;
 import java.lang.management.ThreadMXBean;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
+import java.util.logging.Logger;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
@@ -26,6 +28,7 @@ final class PiiBenchmarkTest {
 
   private static final int WARMUP = 2_000;
   private static final int MEASURED = 10_000;
+  private static final Logger LOGGER = Logger.getLogger(PiiBenchmarkTest.class.getName());
 
   private static final String CLEAN =
       "The quarterly report covers operations across all regions and summarises the "
@@ -60,33 +63,33 @@ final class PiiBenchmarkTest {
       engine.detect(body);
     }
     final long elapsed = System.nanoTime() - started;
-    System.out.printf(
-        "  BENCH  scan throughput: %.1f MB/s%n",
+    reportBench(
+        "  BENCH  scan throughput: %.1f MB/s",
         (double) body.length() * iterations / (elapsed / 1e9) / 1e6);
   }
 
   @Test
-  @DisplayName("allocation per scan")
-  void allocationPerScan() {
+  @DisplayName("portable CPU time per scan")
+  void cpuTimePerScan() {
+    // The standard ThreadMXBean measures CPU time, not allocated bytes. Allocation
+    // counters require the nonportable com.sun.management extension.
     final ThreadMXBean bean = ManagementFactory.getThreadMXBean();
-    if (!(bean instanceof com.sun.management.ThreadMXBean sun)
-        || !sun.isThreadAllocatedMemoryEnabled()) {
-      System.out.println("  BENCH  allocation measurement unavailable on this JVM; skipped");
+    if (!bean.isCurrentThreadCpuTimeSupported() || !bean.isThreadCpuTimeEnabled()) {
+      LOGGER.info("  BENCH  per-thread CPU-time measurement unavailable on this JVM; skipped");
       return;
     }
-    final long id = Thread.currentThread().threadId();
     for (final String label : new String[] {"clean", "dense"}) {
       final String body = body("clean".equals(label) ? CLEAN : DENSE, 1_024);
       for (int i = 0; i < WARMUP; i++) {
         engine.detect(body);
       }
-      final long before = sun.getThreadAllocatedBytes(id);
+      final long before = bean.getCurrentThreadCpuTime();
       for (int i = 0; i < MEASURED; i++) {
         engine.detect(body);
       }
-      final long perScan = (sun.getThreadAllocatedBytes(id) - before) / MEASURED;
-      System.out.printf("  BENCH  allocation per %s 1KiB scan: %d bytes%n", label, perScan);
-      assertThat(perScan).isLessThan(1_048_576);
+      final long perScan = (bean.getCurrentThreadCpuTime() - before) / MEASURED;
+      reportBench("  BENCH  CPU time per %s 1KiB scan: %d ns", label, perScan);
+      assertThat(perScan).isLessThan(TimeUnit.SECONDS.toNanos(1));
     }
   }
 
@@ -103,8 +106,8 @@ final class PiiBenchmarkTest {
     }
     final long elapsed = System.nanoTime() - started;
     final PiiRuleSet set = PiiRuleCompiler.builtIn();
-    System.out.printf(
-        "  BENCH  compiling %d built-in rules: %.2f us%n",
+    reportBench(
+        "  BENCH  compiling %d built-in rules: %.2f us",
         set.size(), elapsed / (double) iterations / 1000.0);
 
     // Compilation happens at install time, never on the scan path. This measures what an operator
@@ -117,8 +120,8 @@ final class PiiBenchmarkTest {
     }
     final long bulkStarted = System.nanoTime();
     final PiiRuleSet bulk = PiiRuleCompiler.compile(many);
-    System.out.printf(
-        "  BENCH  compiling %d rules: %.2f ms%n",
+    reportBench(
+        "  BENCH  compiling %d rules: %.2f ms",
         bulk.size(), (System.nanoTime() - bulkStarted) / 1e6);
   }
 
@@ -145,8 +148,8 @@ final class PiiBenchmarkTest {
       }
       // Linear in rule count: every rule is a separate pass. AD-029 §10.5 records that a combined
       // automaton would not be, and that it was not built.
-      System.out.printf(
-          "  BENCH  scan 4KiB with %d rules: %.2f us/op%n",
+      reportBench(
+          "  BENCH  scan 4KiB with %d rules: %.2f us/op",
           BuiltInRules.all().size() + extra,
           (System.nanoTime() - started) / (double) iterations / 1000.0);
     }
@@ -181,8 +184,8 @@ final class PiiBenchmarkTest {
     pool.shutdown();
     assertThat(pool.awaitTermination(300, TimeUnit.SECONDS)).isTrue();
     final long elapsed = System.nanoTime() - started;
-    System.out.printf(
-        "  BENCH  scan 4KiB across %d threads: %.2f us/op  %.0f scans/sec%n",
+    reportBench(
+        "  BENCH  scan 4KiB across %d threads: %.2f us/op  %.0f scans/sec",
         threads,
         elapsed / (double) (threads * perThread) / 1000.0,
         (double) threads * perThread / (elapsed / 1e9));
@@ -204,8 +207,8 @@ final class PiiBenchmarkTest {
     for (int i = 0; i < iterations; i++) {
       registry.engineFor(tenant);
     }
-    System.out.printf(
-        "  BENCH  registry lookup: %.1f ns/op%n",
+    reportBench(
+        "  BENCH  registry lookup: %.1f ns/op",
         (System.nanoTime() - started) / (double) iterations);
   }
 
@@ -226,9 +229,14 @@ final class PiiBenchmarkTest {
     }
     final long elapsed = System.nanoTime() - started;
     final double perOp = elapsed / (double) iterations;
-    System.out.printf(
-        "  BENCH  %-20s %9.2f us/op  %10.0f scans/sec%n", label, perOp / 1000.0, 1e9 / perOp);
+    reportBench(
+        "  BENCH  %-20s %9.2f us/op  %10.0f scans/sec", label, perOp / 1000.0, 1e9 / perOp);
     assertThat(perOp).isLessThan(TimeUnit.SECONDS.toNanos(1));
+  }
+
+  /** Logs a benchmark measurement with stable locale, without writing to stdout. */
+  private static void reportBench(final String format, final Object... values) {
+    LOGGER.info(String.format(Locale.ROOT, format, values));
   }
 
   /**
