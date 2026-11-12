@@ -57,11 +57,7 @@ class JournalBenchmarkTest {
     final double perSecond = operations / (nanos / 1_000_000_000.0d);
     LOGGER.info(
         String.format(
-            Locale.ROOT,
-            "  PERF  %-40s %,12.0f ops/sec  (%d ops)",
-            what,
-            perSecond,
-            operations));
+            Locale.ROOT, "  PERF  %-40s %,12.0f ops/sec  (%d ops)", what, perSecond, operations));
   }
 
   private static MemoryScope tenantScope() {
