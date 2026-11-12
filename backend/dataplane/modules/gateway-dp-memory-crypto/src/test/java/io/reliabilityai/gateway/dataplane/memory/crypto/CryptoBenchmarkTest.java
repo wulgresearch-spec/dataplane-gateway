@@ -233,8 +233,7 @@ final class CryptoBenchmarkTest {
     final long elapsed = System.nanoTime() - started;
     assertThat(rewrapped).isPositive();
 
-    reportBench(
-        "  BENCH  rotateTo itself: %.1f us (a volatile write)", rotateElapsed / 1000.0);
+    reportBench("  BENCH  rotateTo itself: %.1f us (a volatile write)", rotateElapsed / 1000.0);
     report("rewrap 1KiB record", elapsed, records);
     reportBench(
         "  BENCH  projected migration of 1,000,000 records: %.1f s single-threaded",
@@ -250,8 +249,7 @@ final class CryptoBenchmarkTest {
    */
   private static void report(final String label, final long elapsedNanos, final int iterations) {
     final double perOp = elapsedNanos / (double) iterations;
-    reportBench(
-        "  BENCH  %-40s %8.2f us/op  %12.0f ops/sec", label, perOp / 1000.0, 1e9 / perOp);
+    reportBench("  BENCH  %-40s %8.2f us/op  %12.0f ops/sec", label, perOp / 1000.0, 1e9 / perOp);
   }
 
   /** Logs one benchmark measurement in a locale-independent representation. */
