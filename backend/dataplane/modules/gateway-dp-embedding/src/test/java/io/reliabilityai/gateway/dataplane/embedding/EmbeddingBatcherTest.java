@@ -227,8 +227,7 @@ final class EmbeddingBatcherTest {
         assertThat(future.get(5, TimeUnit.SECONDS).ok()).isTrue();
       }
       assertThat(sent)
-          .containsExactly(
-              List.of("€€"), List.of("abcde"), List.of("€€", "abc"), List.of("€€€€"));
+          .containsExactly(List.of("€€"), List.of("abcde"), List.of("€€", "abc"), List.of("€€€€"));
       assertThat(batcher.queueDepth()).isZero();
     }
   }
