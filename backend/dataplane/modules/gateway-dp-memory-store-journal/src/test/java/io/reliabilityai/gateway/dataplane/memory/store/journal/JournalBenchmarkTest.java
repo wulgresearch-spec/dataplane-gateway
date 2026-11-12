@@ -12,12 +12,14 @@ import io.reliabilityai.gateway.dataplane.memory.api.MemoryType;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.logging.Logger;
 import org.junit.jupiter.api.DisplayNameGeneration;
 import org.junit.jupiter.api.DisplayNameGenerator;
 import org.junit.jupiter.api.Test;
@@ -39,14 +41,27 @@ import org.junit.jupiter.api.io.TempDir;
 @DisplayNameGeneration(DisplayNameGenerator.ReplaceUnderscores.class)
 class JournalBenchmarkTest {
 
+  private static final Logger LOGGER = Logger.getLogger(JournalBenchmarkTest.class.getName());
+
   private static void report(final String what, final long nanos, final int iterations) {
-    System.out.printf(
-        "  PERF  %-40s %,12.0f ns/op  (%d ops)%n", what, (double) nanos / iterations, iterations);
+    LOGGER.info(
+        String.format(
+            Locale.ROOT,
+            "  PERF  %-40s %,12.0f ns/op  (%d ops)",
+            what,
+            (double) nanos / iterations,
+            iterations));
   }
 
   private static void reportRate(final String what, final long nanos, final int operations) {
     final double perSecond = operations / (nanos / 1_000_000_000.0d);
-    System.out.printf("  PERF  %-40s %,12.0f ops/sec  (%d ops)%n", what, perSecond, operations);
+    LOGGER.info(
+        String.format(
+            Locale.ROOT,
+            "  PERF  %-40s %,12.0f ops/sec  (%d ops)",
+            what,
+            perSecond,
+            operations));
   }
 
   private static MemoryScope tenantScope() {
@@ -296,9 +311,14 @@ class JournalBenchmarkTest {
     final long elapsed = System.nanoTime() - start;
     try {
       assertThat(reopened.size()).isEqualTo(records);
-      System.out.printf(
-          "  PERF  %-40s %,12.1f ms  (%d records, %,d bytes)%n",
-          "cold restart (replay whole log)", elapsed / 1_000_000.0d, records, reopened.diskBytes());
+      LOGGER.info(
+          String.format(
+              Locale.ROOT,
+              "  PERF  %-40s %,12.1f ms  (%d records, %,d bytes)",
+              "cold restart (replay whole log)",
+              elapsed / 1_000_000.0d,
+              records,
+              reopened.diskBytes()));
       report("restart, per record", elapsed, records);
     } finally {
       reopened.close();
@@ -322,9 +342,13 @@ class JournalBenchmarkTest {
     final long elapsed = System.nanoTime() - start;
     try {
       assertThat(reopened.partitionCount()).isEqualTo(tenants);
-      System.out.printf(
-          "  PERF  %-40s %,12.1f ms  (%d tenants)%n",
-          "cold restart across tenants", elapsed / 1_000_000.0d, tenants);
+      LOGGER.info(
+          String.format(
+              Locale.ROOT,
+              "  PERF  %-40s %,12.1f ms  (%d tenants)",
+              "cold restart across tenants",
+              elapsed / 1_000_000.0d,
+              tenants));
     } finally {
       reopened.close();
     }
@@ -344,12 +368,19 @@ class JournalBenchmarkTest {
       final long after = jvm.totalMemory() - jvm.freeMemory();
       final long perRecord = Math.max(0L, (after - before) / records);
 
-      System.out.printf(
-          "  PERF  %-40s %,12d bytes/record  (heap, %d records)%n",
-          "resident overhead", perRecord, records);
-      System.out.printf(
-          "  PERF  %-40s %,12d bytes/record  (disk)%n",
-          "on-disk overhead", store.diskBytes() / records);
+      LOGGER.info(
+          String.format(
+              Locale.ROOT,
+              "  PERF  %-40s %,12d bytes/record  (heap, %d records)",
+              "resident overhead",
+              perRecord,
+              records));
+      LOGGER.info(
+          String.format(
+              Locale.ROOT,
+              "  PERF  %-40s %,12d bytes/record  (disk)",
+              "on-disk overhead",
+              store.diskBytes() / records));
 
       // Loose by design: a heap delta measured around a GC is indicative, not exact. It catches an
       // order-of-magnitude regression such as retaining every version of every record.
@@ -371,9 +402,14 @@ class JournalBenchmarkTest {
       final long after = store.compact();
       final long elapsed = System.nanoTime() - start;
 
-      System.out.printf(
-          "  PERF  %-40s %,12.1f ms  (%,d -> %,d bytes)%n",
-          "compaction (5000 written, 4000 deleted)", elapsed / 1_000_000.0d, before, after);
+      LOGGER.info(
+          String.format(
+              Locale.ROOT,
+              "  PERF  %-40s %,12.1f ms  (%,d -> %,d bytes)",
+              "compaction (5000 written, 4000 deleted)",
+              elapsed / 1_000_000.0d,
+              before,
+              after));
       assertThat(after).isLessThan(before);
       assertThat(store.size()).isEqualTo(1_000);
     }
@@ -388,9 +424,13 @@ class JournalBenchmarkTest {
       final long start = System.nanoTime();
       store.snapshotTo(snapshot);
       final long elapsed = System.nanoTime() - start;
-      System.out.printf(
-          "  PERF  %-40s %,12.1f ms  (%,d bytes)%n",
-          "snapshot (10000 records)", elapsed / 1_000_000.0d, store.diskBytes());
+      LOGGER.info(
+          String.format(
+              Locale.ROOT,
+              "  PERF  %-40s %,12.1f ms  (%,d bytes)",
+              "snapshot (10000 records)",
+              elapsed / 1_000_000.0d,
+              store.diskBytes()));
     }
   }
 }

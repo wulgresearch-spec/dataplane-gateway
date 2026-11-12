@@ -20,7 +20,9 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
+import java.util.logging.Logger;
 import java.util.stream.Stream;
 import org.junit.jupiter.api.DisplayNameGeneration;
 import org.junit.jupiter.api.DisplayNameGenerator;
@@ -35,6 +37,8 @@ import org.junit.jupiter.api.io.TempDir;
  */
 @DisplayNameGeneration(DisplayNameGenerator.ReplaceUnderscores.class)
 class JournalSecurityTest {
+
+  private static final Logger LOGGER = Logger.getLogger(JournalSecurityTest.class.getName());
 
   private static final MemoryScope TENANT_SCOPE = MemoryScope.ofTenant(TENANT);
 
@@ -369,9 +373,14 @@ class JournalSecurityTest {
       final long absent = System.nanoTime() - absentStart;
 
       final double ratio = (double) Math.max(forbidden, absent) / Math.min(forbidden, absent);
-      System.out.printf(
-          "  PERF  %-38s forbidden=%,d ns  absent=%,d ns  ratio=%.2f%n",
-          "timing: forbidden vs absent lookup", forbidden / iterations, absent / iterations, ratio);
+      LOGGER.info(
+          String.format(
+              Locale.ROOT,
+              "  PERF  %-38s forbidden=%,d ns  absent=%,d ns  ratio=%.2f",
+              "timing: forbidden vs absent lookup",
+              forbidden / iterations,
+              absent / iterations,
+              ratio));
       assertThat(ratio).isLessThan(10.0d);
     }
   }

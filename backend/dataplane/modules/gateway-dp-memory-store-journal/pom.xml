@@ -45,4 +45,24 @@
       <scope>test</scope>
     </dependency>
   </dependencies>
+  <!--
+    Benchmark and security tests measure monotonic elapsed duration with
+    System.nanoTime(). Only that one custom forbidden signature is excepted
+    in this module. Every other custom signature, including System.out,
+    remains prohibited, and inherited JDK bundles remain active. Production
+    journal code does not use System.nanoTime().
+  -->
+  <build>
+    <plugins>
+      <plugin>
+        <groupId>de.thetaphi</groupId>
+        <artifactId>forbiddenapis</artifactId>
+        <configuration>
+          <signaturesFiles combine.self="override">
+            <signaturesFile>${build-tools.dir}/forbidden-signatures-memory-store-journal.txt</signaturesFile>
+          </signaturesFiles>
+        </configuration>
+      </plugin>
+    </plugins>
+  </build>
 </project>
