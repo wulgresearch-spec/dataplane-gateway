@@ -24,7 +24,12 @@ import java.util.function.Consumer;
  */
 public final class LoopbackHttpProvider implements AutoCloseable {
 
-  /** Minimal request metadata observed by provider-wiring assertions. */
+  /**
+   * Minimal request metadata observed by provider-wiring assertions.
+   *
+   * @param path request URI path as received by the loopback provider
+   * @param authorization authorization header observed on the provider request, if any
+   */
   public record Request(String path, String authorization) {}
 
   private final ServerSocket listener;
