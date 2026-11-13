@@ -161,7 +161,6 @@ public final class RequestPipeline {
   public PipelineOutcome execute(final RequestExecution.Inbound inbound) {
     Preconditions.requireNonNull(inbound, "inbound");
     final StageTrace trace = new StageTrace();
-    RequestExecution execution = RequestExecution.start(inbound);
     CredentialLease lease = null;
     try {
       // ---- INGRESS -------------------------------------------------------------------------
@@ -178,7 +177,6 @@ public final class RequestPipeline {
       }
       final AuthenticationPort.AuthenticationResult.Authenticated identity =
           (AuthenticationPort.AuthenticationResult.Authenticated) authResult;
-      execution = execution.withIdentity(identity.principal(), identity.tenant());
       trace.record(MandatoryStage.AUTHN, Disposition.EXECUTED, started, "authenticated");
 
       final PrincipalContext principal = identity.principal();
@@ -252,7 +250,6 @@ public final class RequestPipeline {
             ErrorCategory.PROVIDER_UNAVAILABLE);
       }
       final RoutingResult.Routed routed = (RoutingResult.Routed) routingResult;
-      execution = execution.withRoute(routed.primary(), routed.failover());
       trace.record(
           MandatoryStage.ROUTER,
           Disposition.EXECUTED,
