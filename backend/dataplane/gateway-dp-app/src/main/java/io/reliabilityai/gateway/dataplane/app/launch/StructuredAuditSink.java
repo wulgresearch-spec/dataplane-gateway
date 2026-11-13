@@ -12,8 +12,7 @@ import java.util.Locale;
  */
 final class StructuredAuditSink implements AuditSinkPort {
 
-  private static final System.Logger LOG =
-      System.getLogger(StructuredAuditSink.class.getName());
+  private static final System.Logger LOG = System.getLogger(StructuredAuditSink.class.getName());
 
   @Override
   public void record(final GovernanceDecisionRecord record) {
