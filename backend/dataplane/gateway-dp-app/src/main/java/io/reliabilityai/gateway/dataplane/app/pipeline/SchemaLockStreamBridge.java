@@ -16,8 +16,8 @@ import java.util.concurrent.TimeUnit;
  *
  * <p>Bounded on purpose. The queue has a fixed capacity, so a SchemaLock session that falls behind
  * slows the producer rather than letting the gateway buffer an unbounded response. If the consumer
- * has gone away entirely, offers time out and trigger a terminal validation failure rather
- * than blocking the transport thread forever or accepting incomplete structured output.
+ * has gone away entirely, offers time out and trigger a terminal validation failure rather than
+ * blocking the transport thread forever or accepting incomplete structured output.
  */
 public final class SchemaLockStreamBridge implements StreamSourcePort {
 
