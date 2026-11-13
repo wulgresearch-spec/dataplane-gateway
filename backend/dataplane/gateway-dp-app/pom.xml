@@ -121,7 +121,7 @@
 
   <build>
     <plugins>
-      <!-- Only the single composition-root clock factory is exempt; all other forbidden-apis
+      <!-- Only the single composition-root clock factory method is exempt; all other forbidden-apis
            signatures remain enforced throughout the application. -->
       <plugin>
         <groupId>de.thetaphi</groupId>
