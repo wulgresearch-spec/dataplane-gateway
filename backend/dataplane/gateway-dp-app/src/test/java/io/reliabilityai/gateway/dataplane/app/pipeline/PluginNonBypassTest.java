@@ -8,6 +8,7 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Instant;
 import java.util.List;
 import java.util.Locale;
 import java.util.regex.Matcher;
@@ -137,8 +138,9 @@ class PluginNonBypassTest {
 
   @Test
   void theStageTraceStillReportsOnlyMandatoryStages() {
-    final StageTrace trace = new StageTrace();
-    trace.record(MandatoryStage.INGRESS, StageTrace.Disposition.EXECUTED, 0L, "admitted");
+    final Instant now = Instant.parse("2026-01-01T00:00:00Z");
+    final StageTrace trace = new StageTrace(() -> now);
+    trace.record(MandatoryStage.INGRESS, StageTrace.Disposition.EXECUTED, now, "admitted");
     trace.recordExtension(ExtensionPoint.CLASSIFICATION, "plugins=3 isolated=1");
 
     assertThat(trace.stages()).containsExactly(MandatoryStage.INGRESS);
