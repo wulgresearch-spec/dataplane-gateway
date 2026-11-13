@@ -90,8 +90,12 @@ final class LaunchWiring {
   private static final SecureRandom SECURE_RANDOM = new SecureRandom();
 
   // The sole ambient clock factory is at the composition root. Every consumer reads ClockPort.
+  private static final ClockPort CLOCK = productionClock();
+
   @CompositionRootClockSource
-  private static final ClockPort CLOCK = new SystemClock(Clock.systemUTC());
+  private static ClockPort productionClock() {
+    return new SystemClock(Clock.systemUTC());
+  }
 
   private LaunchWiring() {}
 
