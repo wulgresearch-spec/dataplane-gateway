@@ -1,6 +1,7 @@
 package io.reliabilityai.gateway.dataplane.app.runtime;
 
 import io.reliabilityai.gateway.canonical.identity.CorrelationId;
+import io.reliabilityai.gateway.canonical.identity.RequestId;
 import io.reliabilityai.gateway.canonical.secret.CredentialLease;
 import io.reliabilityai.gateway.canonical.snapshot.TenantScopeSnapshot;
 import io.reliabilityai.gateway.canonical.snapshot.VerificationKeySnapshot;
@@ -64,6 +65,9 @@ import io.reliabilityai.gateway.dataplane.governance.internal.PolicyStore;
 import io.reliabilityai.gateway.dataplane.ingress.RuntimeStateProbe;
 import io.reliabilityai.gateway.dataplane.metering.api.MeteringOutcomeSink;
 import io.reliabilityai.gateway.dataplane.metering.api.UsageMeteringEnginePort;
+import io.reliabilityai.gateway.dataplane.metering.domain.ExecutionFact;
+import io.reliabilityai.gateway.dataplane.metering.domain.MeteringResult;
+import io.reliabilityai.gateway.dataplane.metering.domain.RequestUsageManifest;
 import io.reliabilityai.gateway.dataplane.metering.application.UsageMeteringService;
 import io.reliabilityai.gateway.dataplane.observability.application.TelemetryEmitService;
 import io.reliabilityai.gateway.dataplane.plugin.api.PluginAuditSinkPort;
@@ -536,7 +540,6 @@ public final class GatewayRuntime {
       return;
     }
     final GatewayRuntimeConfig.ProviderConfig provider = config.provider().orElseThrow();
-    final GatewayRuntimeConfig.ProviderTransportConfig transportConfig = provider.transport();
 
     // Credential bridge over the UNDECORATED secrets service: the decorated one publishes the
     // request
@@ -1294,7 +1297,18 @@ public final class GatewayRuntime {
    */
   public UsageMeteringEnginePort metering() {
     requireReady();
-    return metering;
+    // Expose only the two operations of the metering port, not the internally owned service.
+    return new UsageMeteringEnginePort() {
+      @Override
+      public MeteringResult meterAttempt(final ExecutionFact fact) {
+        return metering.meterAttempt(fact);
+      }
+
+      @Override
+      public RequestUsageManifest finalizeRequest(final RequestId requestId) {
+        return metering.finalizeRequest(requestId);
+      }
+    };
   }
 
   /**

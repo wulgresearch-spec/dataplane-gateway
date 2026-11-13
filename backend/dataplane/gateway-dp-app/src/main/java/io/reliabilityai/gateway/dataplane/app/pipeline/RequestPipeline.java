@@ -298,7 +298,6 @@ public final class RequestPipeline {
             ErrorCategory.AUTH_FAILED);
       }
       lease = ((MaterializationResult.Leased) materialization).lease();
-      execution = execution.withCredential(lease);
       trace.record(MandatoryStage.SECRETS, Disposition.EXECUTED, started, "leased");
 
       // ---- ADAPTER (driven by the reliability engine) --------------------------------------
