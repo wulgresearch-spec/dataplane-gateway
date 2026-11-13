@@ -102,24 +102,24 @@ public final class GatewayMain {
     final String message =
         String.format(
             Locale.ROOT,
-        "%nReliability-First AI Gateway is READY%n"
-            + "  node        %s%n"
-            + "  listening   %s%n"
-            + "  model       %s%n"
-            + "  provider    %s%n"
-            + "  tenant      %s%n%n"
-            + "  health      curl %s/health%n"
-            + "  ready       curl %s/ready%n"
-            + "  metrics     curl %s/metrics%n%n"
-            + "Governance decisions print below as AUDIT lines.%n%n",
-        settings.nodeId(),
-        base,
-        settings.model().value(),
-        settings.providerBaseUri(),
-        LaunchWiring.TENANT,
-        base,
-        base,
-        base);
+            "%nReliability-First AI Gateway is READY%n"
+                + "  node        %s%n"
+                + "  listening   %s%n"
+                + "  model       %s%n"
+                + "  provider    %s%n"
+                + "  tenant      %s%n%n"
+                + "  health      curl %s/health%n"
+                + "  ready       curl %s/ready%n"
+                + "  metrics     curl %s/metrics%n%n"
+                + "Governance decisions print below as AUDIT lines.%n%n",
+            settings.nodeId(),
+            base,
+            settings.model().value(),
+            settings.providerBaseUri(),
+            LaunchWiring.TENANT,
+            base,
+            base,
+            base);
     LOG.log(System.Logger.Level.INFO, message);
   }
 
