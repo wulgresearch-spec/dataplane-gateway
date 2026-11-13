@@ -56,6 +56,7 @@ import io.reliabilityai.gateway.ports.EventPublisherPort.DeliveryClass;
 import io.reliabilityai.gateway.ports.ProviderAdapterPort.ProviderInvocationResult;
 import io.reliabilityai.gateway.ports.SecretsProviderPort;
 import io.reliabilityai.gateway.ports.SecretsProviderPort.MaterializationResult;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -160,15 +161,15 @@ public final class RequestPipeline {
    */
   public PipelineOutcome execute(final RequestExecution.Inbound inbound) {
     Preconditions.requireNonNull(inbound, "inbound");
-    final StageTrace trace = new StageTrace();
+    final StageTrace trace = new StageTrace(clock);
     CredentialLease lease = null;
     try {
       // ---- INGRESS -------------------------------------------------------------------------
-      long started = System.nanoTime();
+      Instant started = clock.now();
       trace.record(MandatoryStage.INGRESS, Disposition.EXECUTED, started, "admitted");
 
       // ---- AUTHN ---------------------------------------------------------------------------
-      started = System.nanoTime();
+      started = clock.now();
       final AuthenticationPort.AuthenticationResult authResult =
           authentication.authenticate(inbound.transportIdentity(), inbound.requestContext());
       if (authResult instanceof AuthenticationPort.AuthenticationResult.Unauthenticated denied) {
@@ -200,7 +201,7 @@ public final class RequestPipeline {
       // model, tools, capabilities, candidate routes, token bound and projected spend, so the
       // policies
       // that compare against them are reachable from live traffic rather than only from tests.
-      started = System.nanoTime();
+      started = clock.now();
       final PolicyDecision decision =
           governance.admit(admission.assemble(inbound, principal, tenant));
       if (!decision.admits()) {
@@ -228,7 +229,7 @@ public final class RequestPipeline {
               java.util.Map.of()));
 
       // ---- ROUTER --------------------------------------------------------------------------
-      started = System.nanoTime();
+      started = clock.now();
       final RoutingResult routingResult =
           router.route(
               new RoutingRequest(
@@ -259,7 +260,7 @@ public final class RequestPipeline {
       // ---- RELIABILITY ---------------------------------------------------------------------
       // The engine is engaged and its plan pinned before credentials exist, so a routing or policy
       // problem is discovered without ever minting key material.
-      started = System.nanoTime();
+      started = clock.now();
       final List<RouteTarget> candidates = new ArrayList<>();
       candidates.add(routed.primary());
       candidates.addAll(routed.failover());
@@ -279,7 +280,7 @@ public final class RequestPipeline {
 
       // ---- SECRETS -------------------------------------------------------------------------
       // Materialized immediately before the provider invocation, and closed in the finally below.
-      started = System.nanoTime();
+      started = clock.now();
       final MaterializationResult materialization =
           secrets.materialize(
               new CredentialRequest(
@@ -298,7 +299,7 @@ public final class RequestPipeline {
       trace.record(MandatoryStage.SECRETS, Disposition.EXECUTED, started, "leased");
 
       // ---- ADAPTER (driven by the reliability engine) --------------------------------------
-      started = System.nanoTime();
+      started = clock.now();
       final InvocationResult invocation = reliability.execute(plan);
       if (invocation instanceof InvocationResult.Surfaced surfaced) {
         return refuse(
@@ -348,7 +349,7 @@ public final class RequestPipeline {
           MandatoryStage.ADAPTER, Disposition.EXECUTED, started, "invoked attempts=" + attempts);
 
       // ---- STREAM_GUARD --------------------------------------------------------------------
-      started = System.nanoTime();
+      started = clock.now();
       if (inbound.streamSource().isPresent()) {
         final TransportVerdict verdict = guardStream(inbound);
         if (verdict.integrity() == TransportVerdict.Integrity.FAILED) {
@@ -380,7 +381,7 @@ public final class RequestPipeline {
               java.util.Map.of()));
 
       // ---- SCHEMA_LOCK ---------------------------------------------------------------------
-      started = System.nanoTime();
+      started = clock.now();
       if (inbound.outputSchema().isPresent()) {
         final CompiledSchema schema = inbound.outputSchema().orElseThrow();
         final CanonicalOutput output =
@@ -421,7 +422,7 @@ public final class RequestPipeline {
 
       // ---- METERING ------------------------------------------------------------------------
       // Exactly once per delivered attempt, then the request is finalized (Doc 23 §17.1).
-      started = System.nanoTime();
+      started = clock.now();
       final AttemptId attemptId =
           new AttemptId(inbound.requestId().value() + "-a" + Math.max(attempts, 1));
       final MeteringResult metered =
@@ -450,7 +451,7 @@ public final class RequestPipeline {
       // Cost is driven by metering's own CostUsagePort seam (Doc 22 §pricing-input): recording an
       // attempt prices it exactly once. Calling the cost engine again here would double-charge, so
       // this stage observes the seam's outcome rather than re-invoking it.
-      started = System.nanoTime();
+      started = clock.now();
       if (metered instanceof MeteringResult.Recorded) {
         trace.record(
             MandatoryStage.COST, Disposition.EXECUTED, started, "priced-via-metering-seam");
@@ -469,7 +470,7 @@ public final class RequestPipeline {
               java.util.Map.of()));
 
       // ---- EMITTER -------------------------------------------------------------------------
-      started = System.nanoTime();
+      started = clock.now();
       publisher.publish(
           finalizedTopic,
           DeliveryClass.ZL,
@@ -618,7 +619,7 @@ public final class RequestPipeline {
       final boolean integrityProven,
       final FinishReason finishReason) {
 
-    long started = System.nanoTime();
+    Instant started = clock.now();
     if (!integrityProven) {
       trace.record(MandatoryStage.STREAM_GUARD, Disposition.REFUSED, started, "integrity-failed");
       if (bridge != null) {
@@ -631,7 +632,7 @@ public final class RequestPipeline {
     trace.record(MandatoryStage.STREAM_GUARD, Disposition.EXECUTED, started, "integrity-proven");
 
     // ---- SCHEMA_LOCK ------------------------------------------------------------------------
-    started = System.nanoTime();
+    started = clock.now();
     if (bridge == null) {
       trace.record(
           MandatoryStage.SCHEMA_LOCK, Disposition.NOT_APPLICABLE, started, "unstructured-output");
@@ -662,7 +663,7 @@ public final class RequestPipeline {
     }
 
     // ---- METERING ---------------------------------------------------------------------------
-    started = System.nanoTime();
+    started = clock.now();
     final AttemptId attemptId =
         new AttemptId(inbound.requestId().value() + "-a" + Math.max(attempts, 1));
     final MeteringResult metered =
@@ -688,7 +689,7 @@ public final class RequestPipeline {
             + manifest.complete());
 
     // ---- COST -------------------------------------------------------------------------------
-    started = System.nanoTime();
+    started = clock.now();
     if (metered instanceof MeteringResult.Recorded) {
       trace.record(MandatoryStage.COST, Disposition.EXECUTED, started, "priced-via-metering-seam");
     } else {
@@ -696,7 +697,7 @@ public final class RequestPipeline {
     }
 
     // ---- EMITTER ----------------------------------------------------------------------------
-    started = System.nanoTime();
+    started = clock.now();
     publisher.publish(
         finalizedTopic,
         DeliveryClass.ZL,
@@ -736,10 +737,10 @@ public final class RequestPipeline {
   private static PipelineOutcome refuse(
       final StageTrace trace,
       final MandatoryStage stage,
-      final long startNanos,
+      final Instant startedAt,
       final String reason,
       final ErrorCategory category) {
-    trace.record(stage, Disposition.REFUSED, startNanos, reason);
+    trace.record(stage, Disposition.REFUSED, startedAt, reason);
     return new PipelineOutcome.Refused(
         new StageRefusal(stage, reason, new CanonicalError(category, Boolean.FALSE, reason, false)),
         trace);
