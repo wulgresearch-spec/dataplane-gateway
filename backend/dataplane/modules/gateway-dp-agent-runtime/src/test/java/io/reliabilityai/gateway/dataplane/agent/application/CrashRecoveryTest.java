@@ -207,8 +207,7 @@ class CrashRecoveryTest {
     final Plan plan = plan(tool("fetch", "search"));
     plans.publish(plan);
     final RunExecutor executor = executorOver(runs, new FakeSessions(), new FakeTools());
-    runtimeOver(runs, executor)
-        .start(run, plan, security("search"), plan.bounds(), 1_000_000L);
+    runtimeOver(runs, executor).start(run, plan, security("search"), plan.bounds(), 1_000_000L);
 
     leaveInterrupted(runs, 0, "fetch", StepKind.PLUGIN);
     assertThat(executor.advance(run)).isInstanceOf(RunExecutor.Advance.Contended.class);
