@@ -79,8 +79,7 @@ public final class StageTrace {
       final Disposition disposition,
       final Instant startedAt,
       final String detail) {
-    final long elapsedNanos =
-        Math.max(0L, Duration.between(startedAt, clock.now()).toNanos());
+    final long elapsedNanos = Math.max(0L, Duration.between(startedAt, clock.now()).toNanos());
     entries.add(new Entry(stage, disposition, elapsedNanos, detail));
   }
 
