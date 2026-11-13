@@ -456,9 +456,9 @@ public final class RunExecutor {
   }
 
   /**
-   * An external step may still be executing, even if its scheduling event is the history tail.
-   * An absent lookup before its deadline means "not yet known", not "the worker died". Pure steps
-   * have no external outcome and can be recomputed immediately.
+   * An external step may still be executing, even if its scheduling event is the history tail. An
+   * absent lookup before its deadline means "not yet known", not "the worker died". Pure steps have
+   * no external outcome and can be recomputed immediately.
    */
   private boolean externalOutcomeStillPending(
       final RunEvent.StepScheduled scheduled, final Step step, final Instant now) {
