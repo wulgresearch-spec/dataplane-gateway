@@ -16,6 +16,7 @@ import io.reliabilityai.gateway.dataplane.agent.api.RunHistory;
 import io.reliabilityai.gateway.dataplane.agent.api.RunId;
 import io.reliabilityai.gateway.dataplane.agent.api.StepId;
 import io.reliabilityai.gateway.dataplane.agent.api.StepKind;
+import io.reliabilityai.gateway.dataplane.agent.api.ToolSessionPort;
 import io.reliabilityai.gateway.dataplane.agent.internal.InMemoryPlanRepository;
 import io.reliabilityai.gateway.dataplane.agent.internal.InMemoryRunRepository;
 import io.reliabilityai.gateway.dataplane.agent.internal.InProcessAgentMetrics;
@@ -155,6 +156,56 @@ class ConcurrencyAndScaleTest {
     assertThat(history.terminated()).isTrue();
     assertThat(countOf(history, RunEvent.StepCompleted.class)).isEqualTo(4);
     assertThat(countOf(history, RunEvent.RunTerminated.class)).isEqualTo(1);
+  }
+
+  @Test
+  void aLiveSessionCannotBePrematurelyRecoveredAsAnInterruptedFailure() throws Exception {
+    final Plan plan = plan(model("a"));
+    plans.publish(plan);
+    final CountDownLatch enteredSession = new CountDownLatch(1);
+    final CountDownLatch completeSession = new CountDownLatch(1);
+    final FakeSessions sessions =
+        new FakeSessions()
+            .respondWith(
+                request -> {
+                  enteredSession.countDown();
+                  try {
+                    if (!completeSession.await(15, TimeUnit.SECONDS)) {
+                      throw new IllegalStateException("test session release timed out");
+                    }
+                  } catch (final InterruptedException interrupted) {
+                    Thread.currentThread().interrupt();
+                    throw new IllegalStateException("test session interrupted", interrupted);
+                  }
+                  return new ToolSessionPort.Completed("ok", 100L, true, 1, false);
+                });
+    final RunExecutor executor = newExecutor(sessions);
+    final RunId run = RunId.of("live-session-race");
+    newRuntime(executor).start(run, plan, security("chat"), plan.bounds(), 1_000_000L);
+    final ExecutorService pool = Executors.newSingleThreadExecutor();
+    try {
+      final java.util.concurrent.Future<RunExecutor.Advance> executing =
+          pool.submit(() -> executor.advance(run));
+      assertThat(enteredSession.await(15, TimeUnit.SECONDS)).isTrue();
+
+      // Worker A has durably scheduled the step but has not published its session outcome.
+      // Worker B must not interpret that live execution as a crashed, unresolved step.
+      assertThat(executor.advance(run)).isInstanceOf(RunExecutor.Advance.Contended.class);
+      assertThat(countOf(runs.load(run).orElseThrow(), RunEvent.StepFailed.class)).isZero();
+
+      completeSession.countDown();
+      assertThat(executing.get(15, TimeUnit.SECONDS))
+          .isInstanceOf(RunExecutor.Advance.Advanced.class);
+      assertThat(executor.advance(run)).isInstanceOf(RunExecutor.Advance.Terminated.class);
+      final RunHistory history = runs.load(run).orElseThrow();
+      assertThat(countOf(history, RunEvent.StepCompleted.class)).isEqualTo(1);
+      assertThat(countOf(history, RunEvent.StepFailed.class)).isZero();
+      assertThat(countOf(history, RunEvent.RunTerminated.class)).isEqualTo(1);
+      assertThat(sessions.pipelineExecutions()).isEqualTo(1);
+    } finally {
+      completeSession.countDown();
+      pool.shutdownNow();
+    }
   }
 
   @Test
