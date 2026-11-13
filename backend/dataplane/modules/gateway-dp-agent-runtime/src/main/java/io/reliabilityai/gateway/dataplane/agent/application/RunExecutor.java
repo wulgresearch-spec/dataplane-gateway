@@ -432,6 +432,14 @@ public final class RunExecutor {
     final RunSnapshot before = ReplayEngine.foldTo(plan, history, history.offset() - 1);
     final Step step = plan.stepAt(scheduled.planStepIndex());
 
+    // A scheduled step is not proof of a crashed worker. Another node may read this tail while the
+    // original session is still running and its outcome has not been published. Defer resolution
+    // of an unknown external outcome until its declared deadline, but adopt a known outcome now.
+    // The conditional append below still arbitrates between recovery and the original executor.
+    if (externalOutcomeStillPending(scheduled, step, now)) {
+      return new Advance.Contended(history.offset());
+    }
+
     if (RunRecovery.resolvableByLookup(scheduled.kind())) {
       final RunRecovery.Resolved resolved =
           scheduled.kind() == StepKind.PIPELINE
@@ -445,6 +453,25 @@ public final class RunExecutor {
     final StepResult recomputed =
         execute(scheduled.stepId(), step, before, scheduled.sessionRef(), now);
     return completeStep(runId, plan, before, step, recomputed, history.offset(), now);
+  }
+
+  /**
+   * An external step may still be executing, even if its scheduling event is the history tail.
+   * An absent lookup before its deadline means "not yet known", not "the worker died". Pure steps
+   * have no external outcome and can be recomputed immediately.
+   */
+  private boolean externalOutcomeStillPending(
+      final RunEvent.StepScheduled scheduled, final Step step, final Instant now) {
+    final Duration elapsed = Duration.between(scheduled.at(), now);
+    return switch (step) {
+      case Step.Pipeline pipeline ->
+          elapsed.compareTo(pipeline.deadline()) < 0
+              && sessions.lookupSession(scheduled.sessionRef()).isEmpty();
+      case Step.Plugin plugin ->
+          elapsed.compareTo(plugin.deadline()) < 0
+              && sessions.lookupTool(scheduled.sessionRef()).isEmpty();
+      default -> false;
+    };
   }
 
   /** Appends a resolution event, then runs supervision over the outcome it implies. */
