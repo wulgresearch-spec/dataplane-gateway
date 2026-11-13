@@ -19,8 +19,8 @@ import java.util.Optional;
  * pipeline reads the trace to make a decision, so removing it would change no behaviour.
  *
  * <p>Not thread-safe by design: one trace belongs to one request on one thread. Elapsed times are
- * measured through the injected clock port and are observational only; no stage decision depends
- * on them. A backward clock adjustment is clamped to zero elapsed time.
+ * measured through the injected clock port and are observational only; no stage decision depends on
+ * them. A backward clock adjustment is clamped to zero elapsed time.
  */
 public final class StageTrace {
 
