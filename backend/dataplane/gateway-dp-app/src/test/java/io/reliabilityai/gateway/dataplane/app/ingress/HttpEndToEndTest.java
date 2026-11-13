@@ -2,24 +2,22 @@ package io.reliabilityai.gateway.dataplane.app.ingress;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import com.sun.net.httpserver.HttpServer;
 import io.reliabilityai.gateway.canonical.identity.SnapshotVersion;
 import io.reliabilityai.gateway.canonical.snapshot.CredentialSnapshotRef;
 import io.reliabilityai.gateway.dataplane.app.runtime.GatewayRuntime;
 import io.reliabilityai.gateway.dataplane.app.runtime.RuntimeFixture;
+import io.reliabilityai.gateway.dataplane.app.testing.LoopbackHttpProvider;
 import io.reliabilityai.gateway.dataplane.governance.api.AuditSinkPort;
 import io.reliabilityai.gateway.dataplane.ingress.HttpIngressServer;
 import io.reliabilityai.gateway.dataplane.ingress.IngressConfig;
 import io.reliabilityai.gateway.dataplane.secrets.adapter.LastKnownGoodCredentialSnapshotCache;
 import io.reliabilityai.gateway.dataplane.secrets.adapter.SnapshotCredentialMaterialSource;
 import java.io.IOException;
-import java.io.OutputStream;
 import java.net.InetSocketAddress;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.time.Instant;
@@ -39,36 +37,24 @@ class HttpEndToEndTest {
   @TempDir Path walDir;
   @TempDir Path dlqDir;
 
-  private HttpServer provider;
+  private LoopbackHttpProvider provider;
   private GatewayRuntime runtime;
   private final HttpClient client =
       HttpClient.newBuilder().version(HttpClient.Version.HTTP_1_1).build();
 
   @AfterEach
-  void tearDown() {
+  void tearDown() throws IOException {
     if (runtime != null && runtime.state() == GatewayRuntime.State.READY) {
       runtime.stop();
     }
     if (provider != null) {
-      provider.stop(0);
+      provider.close();
     }
   }
 
   private URI startProvider(final int status, final String body) throws IOException {
-    provider = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
-    provider.createContext(
-        "/",
-        exchange -> {
-          exchange.getRequestBody().readAllBytes();
-          final byte[] payload = body.getBytes(StandardCharsets.UTF_8);
-          exchange.getResponseHeaders().add("Content-Type", "application/json");
-          exchange.sendResponseHeaders(status, payload.length);
-          try (OutputStream out = exchange.getResponseBody()) {
-            out.write(payload);
-          }
-        });
-    provider.start();
-    return URI.create("http://127.0.0.1:" + provider.getAddress().getPort());
+    provider = LoopbackHttpProvider.fixed(status, body, request -> {});
+    return provider.uri();
   }
 
   private GatewayRuntime start(final URI providerEndpoint) {
@@ -148,22 +134,8 @@ class HttpEndToEndTest {
 
   /** A provider that answers with a real SSE body, flushed frame by frame. */
   private URI startStreamingProvider(final String... sseFrames) throws IOException {
-    provider = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
-    provider.createContext(
-        "/",
-        exchange -> {
-          exchange.getRequestBody().readAllBytes();
-          exchange.getResponseHeaders().add("Content-Type", "text/event-stream");
-          exchange.sendResponseHeaders(200, 0); // chunked
-          try (OutputStream out = exchange.getResponseBody()) {
-            for (final String frame : sseFrames) {
-              out.write(frame.getBytes(StandardCharsets.UTF_8));
-              out.flush();
-            }
-          }
-        });
-    provider.start();
-    return URI.create("http://127.0.0.1:" + provider.getAddress().getPort());
+    provider = LoopbackHttpProvider.streaming(sseFrames);
+    return provider.uri();
   }
 
   private static String chatStreamBody() {
