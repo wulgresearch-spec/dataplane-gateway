@@ -18,9 +18,9 @@ import java.util.function.Consumer;
 /**
  * Tiny portable HTTP/1.1 loopback provider for integration tests.
  *
- * <p>Uses only the standard {@code java.net} APIs, not the JDK's non-portable
- * {@code com.sun.net.httpserver} implementation. It accepts POST requests, drains their bodies,
- * and responds with either a fixed JSON entity or real, flushed chunked SSE frames.
+ * <p>Uses only the standard {@code java.net} APIs, not the JDK's non-portable {@code
+ * com.sun.net.httpserver} implementation. It accepts POST requests, drains their bodies, and
+ * responds with either a fixed JSON entity or real, flushed chunked SSE frames.
  */
 public final class LoopbackHttpProvider implements AutoCloseable {
 
@@ -153,9 +153,16 @@ public final class LoopbackHttpProvider implements AutoCloseable {
           default -> "Response";
         };
     final String head =
-        "HTTP/1.1 " + status + " " + reason + "\r\n"
-            + "Content-Type: " + contentType + "\r\n"
-            + transferHeader + "\r\n"
+        "HTTP/1.1 "
+            + status
+            + " "
+            + reason
+            + "\r\n"
+            + "Content-Type: "
+            + contentType
+            + "\r\n"
+            + transferHeader
+            + "\r\n"
             + "Connection: close\r\n\r\n";
     out.write(head.getBytes(StandardCharsets.US_ASCII));
   }
@@ -172,9 +179,8 @@ public final class LoopbackHttpProvider implements AutoCloseable {
       }
       if (b == '\n') {
         final byte[] bytes = buffer.toByteArray();
-        final int size = bytes.length > 0 && bytes[bytes.length - 1] == '\r'
-            ? bytes.length - 1
-            : bytes.length;
+        final int size =
+            bytes.length > 0 && bytes[bytes.length - 1] == '\r' ? bytes.length - 1 : bytes.length;
         return new String(bytes, 0, size, StandardCharsets.US_ASCII);
       }
       buffer.write(b);
