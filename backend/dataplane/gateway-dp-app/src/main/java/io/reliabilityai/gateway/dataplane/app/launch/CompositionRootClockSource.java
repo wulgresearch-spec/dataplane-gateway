@@ -6,11 +6,11 @@ import java.lang.annotation.RetentionPolicy;
 import java.lang.annotation.Target;
 
 /**
- * Identifies the single system-clock factory at the application composition root.
+ * Identifies the single system-clock factory method at the application composition root.
  *
  * <p>The forbidden-apis checker remains enabled for all other application code. Runtime decisions
  * and observations must use ClockPort instead of constructing ambient clock sources.
  */
 @Retention(RetentionPolicy.CLASS)
-@Target(ElementType.FIELD)
+@Target(ElementType.METHOD)
 @interface CompositionRootClockSource {}
