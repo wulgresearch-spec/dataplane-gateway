@@ -118,4 +118,20 @@
       <scope>test</scope>
     </dependency>
   </dependencies>
+
+  <build>
+    <plugins>
+      <!-- Only the single composition-root clock factory is exempt; all other forbidden-apis
+           signatures remain enforced throughout the application. -->
+      <plugin>
+        <groupId>de.thetaphi</groupId>
+        <artifactId>forbiddenapis</artifactId>
+        <configuration>
+          <suppressAnnotations>
+            <suppressAnnotation>io.reliabilityai.gateway.dataplane.app.launch.CompositionRootClockSource</suppressAnnotation>
+          </suppressAnnotations>
+        </configuration>
+      </plugin>
+    </plugins>
+  </build>
 </project>
