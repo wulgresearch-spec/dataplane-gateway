@@ -356,8 +356,7 @@ class SseStreamingTest {
     assertThat(failures).isEmpty();
     // Client body completion can precede server-side dispatch finally/onCompleted.
     // Wait for the server accounting boundary rather than assuming both are simultaneous.
-    final long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
-    while (server.metrics().inFlight() != 0 && System.nanoTime() < deadline) {
+    for (int attempt = 0; attempt < 500 && server.metrics().inFlight() != 0; attempt++) {
       Thread.sleep(10);
     }
     assertThat(server.metrics().received()).isEqualTo(streams);
