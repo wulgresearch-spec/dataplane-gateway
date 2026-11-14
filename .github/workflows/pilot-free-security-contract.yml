@@ -1,0 +1,39 @@
+name: pilot-free-security-contract
+on:
+  pull_request:
+    branches:
+      - pilot/render-free-gateway
+    paths:
+      - render.yaml
+      - Dockerfile
+      - docs/PilotRenderFreeDeployment.md
+      - .github/workflows/pilot-free-security-contract.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  static-pilot-safety:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Assert pilot stays free and explicitly health-only
+        shell: python
+        run: |
+          from pathlib import Path
+          import re
+
+          render = Path("render.yaml").read_text()
+          docker = Path("Dockerfile").read_text()
+          guide = Path("docs/PilotRenderFreeDeployment.md").read_text()
+
+          assert re.search(r"(?m)^\s*plan:\s*free\s*$", render), "Render must remain free"
+          assert re.search(r"(?m)^\s*autoDeployTrigger:\s*off\s*$", render), "Auto deploy must remain off"
+          assert re.search(r"(?m)^\s*healthCheckPath:\s*/health\s*$", render), "Require health check"
+          assert re.search(r"(?m)^\s*branch:\s*pilot/render-free-gateway\s*$", render)
+          assert "disks:" not in render and "databases:" not in render, "Persistent paid resources not approved"
+          for secret in ("GATEWAY_API_KEY", "GATEWAY_PROVIDER_API_KEY", "GATEWAY_MODEL"):
+              assert re.search(r"(?m)^\s*- key:\s*" + secret + r"\s*\n\s*sync:\s*false\s*$", render), secret + " must be input securely"
+          assert "USER 10001:10001" in docker, "Docker runtime must be non-root"
+          assert "GATEWAY_PILOT_HEALTH_ONLY=true" in guide, "Document the disabled proxy"
+          assert "Phase B: real AI requests (NOT authorized by this pilot)" in guide
+          print("PASS: free, no auto-deploy, no paid persistence, secure secret inputs, nonroot and health-only documentation")
