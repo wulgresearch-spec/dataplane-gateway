@@ -1,0 +1,14 @@
+.git
+.github
+adr
+docs
+*.pptx
+**/target
+**/cp.txt
+**/.env
+**/.env.*
+**/data
+**/*.log
+**/node_modules
+**/.idea
+**/.DS_Store

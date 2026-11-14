@@ -1,0 +1,25 @@
+# Free-tier, single-tenant pilot only; NOT for real customers.
+services:
+  - type: web
+    name: reliability-gateway-pilot
+    runtime: docker
+    plan: free
+    region: singapore
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    branch: pilot/render-free-gateway
+    autoDeployTrigger: off
+    healthCheckPath: /health
+    envVars:
+      - key: GATEWAY_HOST
+        value: 0.0.0.0
+      - key: GATEWAY_DATA_DIR
+        value: /tmp/gateway-data
+      - key: GATEWAY_PROVIDER_BASE_URI
+        value: https://api.openai.com
+      - key: GATEWAY_MODEL
+        sync: false
+      - key: GATEWAY_API_KEY
+        sync: false
+      - key: GATEWAY_PROVIDER_API_KEY
+        sync: false
