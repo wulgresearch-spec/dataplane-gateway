@@ -354,6 +354,13 @@ class SseStreamingTest {
     go.countDown();
     assertThat(done.await(120, TimeUnit.SECONDS)).isTrue();
     assertThat(failures).isEmpty();
+    // Client body completion can precede server-side dispatch finally/onCompleted.
+    // Wait for the server accounting boundary rather than assuming both are simultaneous.
+    final long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
+    while (server.metrics().inFlight() != 0 && System.nanoTime() < deadline) {
+      Thread.sleep(10);
+    }
+    assertThat(server.metrics().received()).isEqualTo(streams);
     assertThat(server.metrics().inFlight()).isZero(); // no leaked request threads
   }
 
