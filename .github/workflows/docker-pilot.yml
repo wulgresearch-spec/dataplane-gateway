@@ -1,0 +1,31 @@
+name: free-pilot-container
+on:
+  pull_request:
+    paths:
+      - Dockerfile
+      - .dockerignore
+      - render.yaml
+      - docs/PilotRenderFreeDeployment.md
+      - .github/workflows/docker-pilot.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  build-image:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build development pilot Docker image
+        run: docker build --tag reliability-gateway-pilot:ci .
+      - name: Verify startup fails closed without credentials
+        shell: bash
+        run: |
+          set +e
+          docker run --rm --network none -e PORT=10000 reliability-gateway-pilot:ci
+          result=$?
+          set -e
+          if [ "$result" -ne 2 ]; then
+            echo "Expected missing-credentials exit 2, got $result"
+            exit 1
+          fi
