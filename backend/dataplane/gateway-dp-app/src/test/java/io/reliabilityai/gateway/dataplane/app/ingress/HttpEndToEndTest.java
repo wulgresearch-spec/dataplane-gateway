@@ -4,9 +4,12 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import io.reliabilityai.gateway.canonical.identity.SnapshotVersion;
 import io.reliabilityai.gateway.canonical.snapshot.CredentialSnapshotRef;
+import io.reliabilityai.gateway.dataplane.app.runtime.ExternalAdapters;
 import io.reliabilityai.gateway.dataplane.app.runtime.GatewayRuntime;
 import io.reliabilityai.gateway.dataplane.app.runtime.RuntimeFixture;
 import io.reliabilityai.gateway.dataplane.app.testing.LoopbackHttpProvider;
+import io.reliabilityai.gateway.dataplane.authn.api.VerificationOutcome;
+import io.reliabilityai.gateway.dataplane.authn.domain.AuthenticationFailureReason;
 import io.reliabilityai.gateway.dataplane.governance.api.AuditSinkPort;
 import io.reliabilityai.gateway.dataplane.ingress.HttpIngressServer;
 import io.reliabilityai.gateway.dataplane.ingress.IngressConfig;
@@ -59,6 +62,10 @@ class HttpEndToEndTest {
   }
 
   private GatewayRuntime start(final URI providerEndpoint) {
+    return start(providerEndpoint, RuntimeFixture.authenticatingExternalAdapters());
+  }
+
+  private GatewayRuntime start(final URI providerEndpoint, final ExternalAdapters adapters) {
     runtime =
         new GatewayRuntime(
             RuntimeFixture.config(
@@ -67,7 +74,7 @@ class HttpEndToEndTest {
                 dlqDir.resolve("dlq.log"),
                 record -> {},
                 new RuntimeFixture.TestClock(),
-                RuntimeFixture.authenticatingExternalAdapters(),
+                adapters,
                 Optional.of(
                     RuntimeFixture.governanceConfig(
                         RuntimeFixture.permittingPolicy(), AuditSinkPort.NO_OP)),
@@ -78,6 +85,34 @@ class HttpEndToEndTest {
     runtime.start();
     publishCredential(runtime);
     return runtime;
+  }
+
+  /**
+   * A strict identity-verifier test seam, unlike the permissive lifecycle fixture. The production
+   * static-key verifier is independently covered by StaticKeyIdentityVerifierTest.
+   */
+  private static ExternalAdapters strictAuthenticationAdapters() {
+    final ExternalAdapters base = RuntimeFixture.authenticatingExternalAdapters();
+    return new ExternalAdapters(
+        base.ingress(),
+        Optional.of(
+            (identity, keys) -> {
+              if (!"Bearer client-token".equals(identity.credentialMaterial())) {
+                return new VerificationOutcome.Rejected(
+                    AuthenticationFailureReason.INVALID_SIGNATURE);
+              }
+              return new VerificationOutcome.Verified(
+                  new io.reliabilityai.gateway.canonical.identity.PrincipalId("principal-a"),
+                  Map.of(),
+                  "api-key");
+            }),
+        base.governance(),
+        base.providerTransport(),
+        base.providerTranslator(),
+        base.credentialPort(),
+        base.capabilitySnapshot(),
+        base.schemaValidator(),
+        base.providerGeneration());
   }
 
   private static void publishCredential(final GatewayRuntime gateway) {
@@ -123,7 +158,7 @@ class HttpEndToEndTest {
   void missingBearerTokenIsRejectedWithoutCallingTheProvider() throws Exception {
     final AtomicInteger forwarded = new AtomicInteger();
     provider = LoopbackHttpProvider.fixed(200, "{}", request -> forwarded.incrementAndGet());
-    start(provider.uri());
+    start(provider.uri(), strictAuthenticationAdapters());
 
     final HttpResponse<String> response =
         client.send(
@@ -142,7 +177,7 @@ class HttpEndToEndTest {
   void incorrectBearerTokenIsRejectedWithoutCallingTheProvider() throws Exception {
     final AtomicInteger forwarded = new AtomicInteger();
     provider = LoopbackHttpProvider.fixed(200, "{}", request -> forwarded.incrementAndGet());
-    start(provider.uri());
+    start(provider.uri(), strictAuthenticationAdapters());
 
     final HttpResponse<String> response =
         client.send(
@@ -162,7 +197,7 @@ class HttpEndToEndTest {
   void invalidJsonIsRejectedBeforeTheProviderIsInvoked() throws Exception {
     final AtomicInteger forwarded = new AtomicInteger();
     provider = LoopbackHttpProvider.fixed(200, "{}", request -> forwarded.incrementAndGet());
-    start(provider.uri());
+    start(provider.uri(), strictAuthenticationAdapters());
 
     final HttpResponse<String> response = chat("{not json");
 
