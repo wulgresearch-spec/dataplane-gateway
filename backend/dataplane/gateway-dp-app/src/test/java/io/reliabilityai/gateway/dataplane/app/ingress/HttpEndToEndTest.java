@@ -22,6 +22,7 @@ import java.nio.file.Path;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.Optional;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
@@ -112,6 +113,64 @@ class HttpEndToEndTest {
     return "{\"model\":\""
         + RuntimeFixture.MODEL.value()
         + "\",\"messages\":[{\"role\":\"user\",\"content\":\"ping\"}]}";
+  }
+
+  /**
+   * A public HTTP socket must not let missing or invalid bearer credentials reach
+   * the provider. All traffic stays on 127.0.0.1 and uses synthetic tokens.
+   */
+  @Test
+  void missingBearerTokenIsRejectedWithoutCallingTheProvider() throws Exception {
+    final AtomicInteger forwarded = new AtomicInteger();
+    provider =
+        LoopbackHttpProvider.fixed(200, "{}", request -> forwarded.incrementAndGet());
+    start(provider.uri());
+
+    final HttpResponse<String> response =
+        client.send(
+            HttpRequest.newBuilder()
+                .uri(gatewayUri(HttpIngressServer.PATH_CHAT))
+                .header("Content-Type", "application/json")
+                .POST(HttpRequest.BodyPublishers.ofString(chatBody()))
+                .build(),
+            HttpResponse.BodyHandlers.ofString());
+
+    assertThat(response.statusCode()).isEqualTo(401);
+    assertThat(forwarded.get()).isZero();
+  }
+
+  @Test
+  void incorrectBearerTokenIsRejectedWithoutCallingTheProvider() throws Exception {
+    final AtomicInteger forwarded = new AtomicInteger();
+    provider =
+        LoopbackHttpProvider.fixed(200, "{}", request -> forwarded.incrementAndGet());
+    start(provider.uri());
+
+    final HttpResponse<String> response =
+        client.send(
+            HttpRequest.newBuilder()
+                .uri(gatewayUri(HttpIngressServer.PATH_CHAT))
+                .header("Content-Type", "application/json")
+                .header("Authorization", "Bearer incorrect-pilot-key")
+                .POST(HttpRequest.BodyPublishers.ofString(chatBody()))
+                .build(),
+            HttpResponse.BodyHandlers.ofString());
+
+    assertThat(response.statusCode()).isEqualTo(401);
+    assertThat(forwarded.get()).isZero();
+  }
+
+  @Test
+  void invalidJsonIsRejectedBeforeTheProviderIsInvoked() throws Exception {
+    final AtomicInteger forwarded = new AtomicInteger();
+    provider =
+        LoopbackHttpProvider.fixed(200, "{}", request -> forwarded.incrementAndGet());
+    start(provider.uri());
+
+    final HttpResponse<String> response = chat("{not json");
+
+    assertThat(response.statusCode()).isEqualTo(400);
+    assertThat(forwarded.get()).isZero();
   }
 
   @Test
@@ -218,7 +277,11 @@ class HttpEndToEndTest {
 
   @Test
   void governanceRefusalIsSurfacedBeforeAnyProviderCall() throws Exception {
-    final URI endpoint = startProvider(200, "{}");
+    final AtomicInteger forwarded = new AtomicInteger();
+    final AtomicInteger auditDecisions = new AtomicInteger();
+    provider =
+        LoopbackHttpProvider.fixed(200, "{}", request -> forwarded.incrementAndGet());
+    final URI endpoint = provider.uri();
     runtime =
         new GatewayRuntime(
             RuntimeFixture.config(
@@ -230,7 +293,7 @@ class HttpEndToEndTest {
                 RuntimeFixture.authenticatingExternalAdapters(),
                 Optional.of(
                     RuntimeFixture.governanceConfig(
-                        RuntimeFixture.disabledTenantPolicy(), AuditSinkPort.NO_OP)),
+                        RuntimeFixture.disabledTenantPolicy(), record -> auditDecisions.incrementAndGet())),
                 Optional.of(RuntimeFixture.providerConfig(endpoint)),
                 Optional.of(
                     new IngressConfig(
@@ -242,6 +305,8 @@ class HttpEndToEndTest {
 
     assertThat(response.statusCode()).isEqualTo(403);
     assertThat(response.body()).contains("\"stage\":\"GOVERNANCE\"").contains("tenant-disabled");
+    assertThat(forwarded.get()).isZero();
+    assertThat(auditDecisions.get()).isPositive();
   }
 
   @Test
