@@ -22,8 +22,8 @@ import java.nio.file.Path;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Map;
-import java.util.concurrent.atomic.AtomicInteger;
 import java.util.Optional;
+import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -116,14 +116,13 @@ class HttpEndToEndTest {
   }
 
   /**
-   * A public HTTP socket must not let missing or invalid bearer credentials reach
-   * the provider. All traffic stays on 127.0.0.1 and uses synthetic tokens.
+   * A public HTTP socket must not let missing or invalid bearer credentials reach the provider. All
+   * traffic stays on 127.0.0.1 and uses synthetic tokens.
    */
   @Test
   void missingBearerTokenIsRejectedWithoutCallingTheProvider() throws Exception {
     final AtomicInteger forwarded = new AtomicInteger();
-    provider =
-        LoopbackHttpProvider.fixed(200, "{}", request -> forwarded.incrementAndGet());
+    provider = LoopbackHttpProvider.fixed(200, "{}", request -> forwarded.incrementAndGet());
     start(provider.uri());
 
     final HttpResponse<String> response =
@@ -142,8 +141,7 @@ class HttpEndToEndTest {
   @Test
   void incorrectBearerTokenIsRejectedWithoutCallingTheProvider() throws Exception {
     final AtomicInteger forwarded = new AtomicInteger();
-    provider =
-        LoopbackHttpProvider.fixed(200, "{}", request -> forwarded.incrementAndGet());
+    provider = LoopbackHttpProvider.fixed(200, "{}", request -> forwarded.incrementAndGet());
     start(provider.uri());
 
     final HttpResponse<String> response =
@@ -163,8 +161,7 @@ class HttpEndToEndTest {
   @Test
   void invalidJsonIsRejectedBeforeTheProviderIsInvoked() throws Exception {
     final AtomicInteger forwarded = new AtomicInteger();
-    provider =
-        LoopbackHttpProvider.fixed(200, "{}", request -> forwarded.incrementAndGet());
+    provider = LoopbackHttpProvider.fixed(200, "{}", request -> forwarded.incrementAndGet());
     start(provider.uri());
 
     final HttpResponse<String> response = chat("{not json");
@@ -279,8 +276,7 @@ class HttpEndToEndTest {
   void governanceRefusalIsSurfacedBeforeAnyProviderCall() throws Exception {
     final AtomicInteger forwarded = new AtomicInteger();
     final AtomicInteger auditDecisions = new AtomicInteger();
-    provider =
-        LoopbackHttpProvider.fixed(200, "{}", request -> forwarded.incrementAndGet());
+    provider = LoopbackHttpProvider.fixed(200, "{}", request -> forwarded.incrementAndGet());
     final URI endpoint = provider.uri();
     runtime =
         new GatewayRuntime(
@@ -293,7 +289,8 @@ class HttpEndToEndTest {
                 RuntimeFixture.authenticatingExternalAdapters(),
                 Optional.of(
                     RuntimeFixture.governanceConfig(
-                        RuntimeFixture.disabledTenantPolicy(), record -> auditDecisions.incrementAndGet())),
+                        RuntimeFixture.disabledTenantPolicy(),
+                        record -> auditDecisions.incrementAndGet())),
                 Optional.of(RuntimeFixture.providerConfig(endpoint)),
                 Optional.of(
                     new IngressConfig(
