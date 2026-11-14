@@ -24,6 +24,8 @@ import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
+import java.util.logging.Logger;
 import org.junit.jupiter.api.DisplayNameGeneration;
 import org.junit.jupiter.api.DisplayNameGenerator;
 import org.junit.jupiter.api.Test;
@@ -34,15 +36,17 @@ import org.junit.jupiter.api.io.TempDir;
  *
  * <p>The assertions are deliberately loose — an order of magnitude, not a percentage — because a
  * unit test on shared CI hardware cannot hold a tight latency bound without becoming flaky, and a
- * flaky performance test is worse than none. The numbers printed alongside them are the
- * deliverable; the assertions only catch a regression large enough to mean something is
- * structurally wrong.
+ * flaky performance test is worse than none. The numbers logged alongside them are the deliverable;
+ * the assertions only catch a regression large enough to mean something is structurally wrong.
  *
  * <p>Each measurement is preceded by a warm-up so the figure is not dominated by class loading and
  * JIT, and the same work is then timed over enough iterations to be meaningful.
  */
 @DisplayNameGeneration(DisplayNameGenerator.ReplaceUnderscores.class)
 class AgentRuntimePerformanceTest {
+
+  private static final Logger LOGGER =
+      Logger.getLogger(AgentRuntimePerformanceTest.class.getName());
 
   private final InMemoryRunRepository runs = new InMemoryRunRepository();
   private final InMemoryPlanRepository plans = new InMemoryPlanRepository();
@@ -63,7 +67,9 @@ class AgentRuntimePerformanceTest {
 
   private static void report(final String what, final long nanos, final int iterations) {
     final double perOp = (double) nanos / iterations;
-    System.out.printf("  PERF  %-34s %,10.0f ns/op  (%d iterations)%n", what, perOp, iterations);
+    LOGGER.info(
+        String.format(
+            Locale.ROOT, "  PERF  %-34s %,10.0f ns/op  (%d iterations)", what, perOp, iterations));
   }
 
   private Plan publishPlan(final int steps, final String id) {
@@ -339,8 +345,12 @@ class AgentRuntimePerformanceTest {
     System.gc();
     final long after = jvm.totalMemory() - jvm.freeMemory();
     final long perRun = Math.max(0L, (after - before) / live.size());
-    System.out.printf(
-        "  PERF  %-34s %,10d bytes/run (1000 runs, 2 steps each)%n", "resident run state", perRun);
+    LOGGER.info(
+        String.format(
+            Locale.ROOT,
+            "  PERF  %-34s %,10d bytes/run (1000 runs, 2 steps each)",
+            "resident run state",
+            perRun));
 
     // Loose by design: a heap delta measured around a GC is indicative, not exact. It catches an
     // order-of-magnitude regression such as retaining full payloads per event.

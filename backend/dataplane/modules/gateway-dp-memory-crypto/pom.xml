@@ -50,4 +50,23 @@
       <scope>test</scope>
     </dependency>
   </dependencies>
+  <!--
+    Only elapsed-time benchmark/security tests need System.nanoTime(). Production
+    crypto does not use ambient timing. Keep all other forbidden custom signatures
+    and all bundled unsafe/deprecated/non-portable JDK API signatures enabled.
+    A future injectable monotonic ticker can restore the nanoTime restriction.
+  -->
+  <build>
+    <plugins>
+      <plugin>
+        <groupId>de.thetaphi</groupId>
+        <artifactId>forbiddenapis</artifactId>
+        <configuration>
+          <signaturesFiles combine.self="override">
+            <signaturesFile>${build-tools.dir}/forbidden-signatures-memory-crypto.txt</signaturesFile>
+          </signaturesFiles>
+        </configuration>
+      </plugin>
+    </plugins>
+  </build>
 </project>

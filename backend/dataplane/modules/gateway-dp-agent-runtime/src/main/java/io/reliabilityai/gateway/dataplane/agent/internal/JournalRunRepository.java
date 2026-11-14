@@ -123,8 +123,13 @@ public final class JournalRunRepository implements RunRepository {
       }
     }
     synchronized (journal.lock) {
+      final Path tenantDirectory = path.getParent();
+      if (tenantDirectory == null) {
+        journals.remove(runId, journal);
+        return new AppendResult.Unavailable("journal path has no tenant directory");
+      }
       try {
-        Files.createDirectories(path.getParent());
+        Files.createDirectories(tenantDirectory);
       } catch (final IOException failure) {
         journals.remove(runId);
         return new AppendResult.Unavailable("cannot create tenant directory: " + failure);

@@ -1,5 +1,6 @@
 package io.reliabilityai.gateway.dataplane.memory.crypto;
 
+import static io.reliabilityai.gateway.dataplane.memory.crypto.CryptoFixtures.writePrivateKeyring;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import io.reliabilityai.gateway.canonical.identity.CorrelationId;
@@ -206,13 +207,13 @@ final class MemoryRuntimeWithRealCryptoTest {
     final Path keyring = root.resolve("keys");
     final String january = randomKey();
     final String july = randomKey();
-    Files.writeString(keyring, "primary = 2026-01\n2026-01 = " + january + "\n");
+    writePrivateKeyring(keyring, "primary = 2026-01\n2026-01 = " + january + "\n");
     final Path journal = root.resolve("journal");
     try (JournalMemoryStore store = new JournalMemoryStore(journal)) {
       runtimeOver(store, crypto(keyring)).write(caller(), write("written under the old key"));
     }
 
-    Files.writeString(
+    writePrivateKeyring(
         keyring, "primary = 2026-07\n2026-01 = " + january + "\n2026-07 = " + july + "\n");
     try (JournalMemoryStore reopened = new JournalMemoryStore(journal)) {
       final MemoryRuntime runtime = runtimeOver(reopened, crypto(keyring));
@@ -233,7 +234,7 @@ final class MemoryRuntimeWithRealCryptoTest {
     final Path keyring = root.resolve("keys");
     final String january = randomKey();
     final String july = randomKey();
-    Files.writeString(keyring, "primary = 2026-01\n2026-01 = " + january + "\n");
+    writePrivateKeyring(keyring, "primary = 2026-01\n2026-01 = " + january + "\n");
     final Path journal = root.resolve("journal");
     try (JournalMemoryStore store = new JournalMemoryStore(journal)) {
       runtimeOver(store, crypto(keyring))
@@ -241,7 +242,7 @@ final class MemoryRuntimeWithRealCryptoTest {
     }
 
     // The January key is gone from the keyring entirely — the crypto-shredding erasure story.
-    Files.writeString(keyring, "primary = 2026-07\n2026-07 = " + july + "\n");
+    writePrivateKeyring(keyring, "primary = 2026-07\n2026-07 = " + july + "\n");
     try (JournalMemoryStore reopened = new JournalMemoryStore(journal)) {
       final MemoryOutcome read =
           runtimeOver(reopened, crypto(keyring)).read(caller(), scopeQuery());
@@ -399,7 +400,7 @@ final class MemoryRuntimeWithRealCryptoTest {
    */
   private static Path keyring(final Path root, final String version) throws IOException {
     final Path keyring = root.resolve("keys");
-    Files.writeString(
+    writePrivateKeyring(
         keyring, "primary = " + version + "\n" + version + " = " + randomKey() + "\n");
     return keyring;
   }

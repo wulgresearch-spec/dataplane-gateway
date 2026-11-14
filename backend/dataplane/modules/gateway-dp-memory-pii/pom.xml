@@ -39,4 +39,23 @@
       <scope>test</scope>
     </dependency>
   </dependencies>
+  <!--
+    Only monotonic elapsed-time telemetry and benchmark/security measurements need
+    System.nanoTime(). Classification remains rule/step based and deterministic.
+    The module-only custom signature file preserves all other forbidden methods,
+    and inherited JDK unsafe/deprecated/non-portable checks stay enabled.
+  -->
+  <build>
+    <plugins>
+      <plugin>
+        <groupId>de.thetaphi</groupId>
+        <artifactId>forbiddenapis</artifactId>
+        <configuration>
+          <signaturesFiles combine.self="override">
+            <signaturesFile>${build-tools.dir}/forbidden-signatures-memory-pii.txt</signaturesFile>
+          </signaturesFiles>
+        </configuration>
+      </plugin>
+    </plugins>
+  </build>
 </project>

@@ -165,8 +165,15 @@ public final class OpenAiRequestMapper {
     } catch (final NumberFormatException notNumeric) {
       return; // a malformed parameter is dropped, never forwarded as a string
     }
+    // NaN and infinities are not legal JSON numbers; drop them like malformed input.
+    if (!Double.isFinite(parsed)) {
+      return;
+    }
     body.append(',').append(Json.quote(wireName)).append(':');
-    if (parsed == Math.rint(parsed) && !Double.isInfinite(parsed)) {
+    // Only render an integer when a double-to-long conversion cannot saturate.
+    if (Double.compare(parsed, Math.rint(parsed)) == 0
+        && parsed >= Long.MIN_VALUE
+        && parsed < 0x1.0p63) {
       body.append((long) parsed);
     } else {
       body.append(parsed);

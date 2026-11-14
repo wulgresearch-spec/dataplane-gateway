@@ -3,6 +3,9 @@ package io.reliabilityai.gateway.dataplane.app.pipeline;
 import io.reliabilityai.gateway.canonical.plugin.ExtensionPoint;
 import io.reliabilityai.gateway.common.Preconditions;
 import io.reliabilityai.gateway.dataplane.app.MandatoryStage;
+import io.reliabilityai.gateway.ports.ClockPort;
+import java.time.Duration;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
@@ -16,8 +19,8 @@ import java.util.Optional;
  * pipeline reads the trace to make a decision, so removing it would change no behaviour.
  *
  * <p>Not thread-safe by design: one trace belongs to one request on one thread. Elapsed times are
- * measured with {@code System.nanoTime()} and are observational only; no stage decision depends on
- * them, which is what keeps the pipeline deterministic.
+ * measured through the injected clock port and are observational only; no stage decision depends on
+ * them. A backward clock adjustment is clamped to zero elapsed time.
  */
 public final class StageTrace {
 
@@ -54,23 +57,30 @@ public final class StageTrace {
     }
   }
 
+  private final ClockPort clock;
   private final List<Entry> entries = new ArrayList<>(MandatoryStage.values().length);
   private final List<ExtensionEntry> extensions = new ArrayList<>(0);
+
+  /** Creates one request-local trace using the injected clock. */
+  StageTrace(final ClockPort clock) {
+    this.clock = Preconditions.requireNonNull(clock, "clock");
+  }
 
   /**
    * Records a completed stage.
    *
    * @param stage the stage that was consulted
    * @param disposition what it decided
-   * @param startNanos the {@code System.nanoTime()} reading taken when the stage was entered
+   * @param startedAt the injected clock reading taken when the stage was entered
    * @param detail a short, content-free outcome description
    */
   void record(
       final MandatoryStage stage,
       final Disposition disposition,
-      final long startNanos,
+      final Instant startedAt,
       final String detail) {
-    entries.add(new Entry(stage, disposition, System.nanoTime() - startNanos, detail));
+    final long elapsedNanos = Math.max(0L, Duration.between(startedAt, clock.now()).toNanos());
+    entries.add(new Entry(stage, disposition, elapsedNanos, detail));
   }
 
   /**

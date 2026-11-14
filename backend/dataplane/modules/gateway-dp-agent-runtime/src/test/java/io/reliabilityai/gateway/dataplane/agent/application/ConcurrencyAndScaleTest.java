@@ -16,6 +16,7 @@ import io.reliabilityai.gateway.dataplane.agent.api.RunHistory;
 import io.reliabilityai.gateway.dataplane.agent.api.RunId;
 import io.reliabilityai.gateway.dataplane.agent.api.StepId;
 import io.reliabilityai.gateway.dataplane.agent.api.StepKind;
+import io.reliabilityai.gateway.dataplane.agent.api.ToolSessionPort;
 import io.reliabilityai.gateway.dataplane.agent.internal.InMemoryPlanRepository;
 import io.reliabilityai.gateway.dataplane.agent.internal.InMemoryRunRepository;
 import io.reliabilityai.gateway.dataplane.agent.internal.InProcessAgentMetrics;
@@ -158,6 +159,56 @@ class ConcurrencyAndScaleTest {
   }
 
   @Test
+  void aLiveSessionCannotBePrematurelyRecoveredAsAnInterruptedFailure() throws Exception {
+    final Plan plan = plan(model("a"));
+    plans.publish(plan);
+    final CountDownLatch enteredSession = new CountDownLatch(1);
+    final CountDownLatch completeSession = new CountDownLatch(1);
+    final FakeSessions sessions =
+        new FakeSessions()
+            .respondWith(
+                request -> {
+                  enteredSession.countDown();
+                  try {
+                    if (!completeSession.await(15, TimeUnit.SECONDS)) {
+                      throw new IllegalStateException("test session release timed out");
+                    }
+                  } catch (final InterruptedException interrupted) {
+                    Thread.currentThread().interrupt();
+                    throw new IllegalStateException("test session interrupted", interrupted);
+                  }
+                  return new ToolSessionPort.Completed("ok", 100L, true, 1, false);
+                });
+    final RunExecutor executor = newExecutor(sessions);
+    final RunId run = RunId.of("live-session-race");
+    newRuntime(executor).start(run, plan, security("chat"), plan.bounds(), 1_000_000L);
+    final ExecutorService pool = Executors.newSingleThreadExecutor();
+    try {
+      final java.util.concurrent.Future<RunExecutor.Advance> executing =
+          pool.submit(() -> executor.advance(run));
+      assertThat(enteredSession.await(15, TimeUnit.SECONDS)).isTrue();
+
+      // Worker A has durably scheduled the step but has not published its session outcome.
+      // Worker B must not interpret that live execution as a crashed, unresolved step.
+      assertThat(executor.advance(run)).isInstanceOf(RunExecutor.Advance.Contended.class);
+      assertThat(countOf(runs.load(run).orElseThrow(), RunEvent.StepFailed.class)).isZero();
+
+      completeSession.countDown();
+      assertThat(executing.get(15, TimeUnit.SECONDS))
+          .isInstanceOf(RunExecutor.Advance.Advanced.class);
+      assertThat(executor.advance(run)).isInstanceOf(RunExecutor.Advance.Terminated.class);
+      final RunHistory history = runs.load(run).orElseThrow();
+      assertThat(countOf(history, RunEvent.StepCompleted.class)).isEqualTo(1);
+      assertThat(countOf(history, RunEvent.StepFailed.class)).isZero();
+      assertThat(countOf(history, RunEvent.RunTerminated.class)).isEqualTo(1);
+      assertThat(sessions.pipelineExecutions()).isEqualTo(1);
+    } finally {
+      completeSession.countDown();
+      pool.shutdownNow();
+    }
+  }
+
+  @Test
   void aLosingWriterAbandonsItsStepRatherThanOverwritingTheWinners() {
     final Plan plan = plan(model("a"), model("b"));
     plans.publish(plan);
@@ -289,6 +340,11 @@ class ConcurrencyAndScaleTest {
       runtime.start(RunId.of("r-" + i), plan, security("chat"), plan.bounds(), 1_000_000L);
     }
 
+    // Hold one run's lease as a busy node would. Other nodes must make progress while
+    // that run stays inaccessible; a pull scheduler does not promise work to every thread.
+    final RunId heldRun = RunId.of("r-0");
+    assertThat(runs.claim(heldRun, "busy-node", clock.now(), clock.now().plusSeconds(60))).isTrue();
+
     final java.util.Map<String, Integer> claimsByNode = new ConcurrentHashMap<>();
     final ExecutorService pool = Executors.newFixedThreadPool(4);
     final List<java.util.concurrent.Future<?>> workers = new ArrayList<>();
@@ -311,9 +367,28 @@ class ConcurrencyAndScaleTest {
     }
     pool.shutdownNow();
 
+    // Every other run completes even though the busy node still holds one lease.
+    assertThat(runs.unfinished(TENANT, 500)).containsExactly(heldRun);
+    assertThat(countOf(runs.load(heldRun).orElseThrow(), RunEvent.StepCompleted.class)).isZero();
+    assertThat(claimsByNode.values()).anyMatch(claims -> claims > 0);
+
+    // Once the busy node releases its lease, the remaining run completes exactly once.
+    runs.release(heldRun, "busy-node");
+    final RunScheduler recovering =
+        new RunScheduler(runs, executor, clock, "recovering-node", Duration.ofSeconds(30), 16);
+    for (int pass = 0; pass < 5 && !runs.unfinished(TENANT, 1).isEmpty(); pass++) {
+      recovering.pass(TENANT);
+    }
     assertThat(runs.unfinished(TENANT, 500)).isEmpty();
-    // Every node did some work; none was starved by the others holding leases.
-    assertThat(claimsByNode.values()).allMatch(claims -> claims > 0);
+    for (int i = 0; i < 200; i++) {
+      final RunHistory history = runs.load(RunId.of("r-" + i)).orElseThrow();
+      assertThat(countOf(history, RunEvent.StepCompleted.class))
+          .as("run %d completed exactly two steps", i)
+          .isEqualTo(2);
+      assertThat(countOf(history, RunEvent.RunTerminated.class))
+          .as("run %d terminated exactly once", i)
+          .isEqualTo(1);
+    }
   }
 
   @Test

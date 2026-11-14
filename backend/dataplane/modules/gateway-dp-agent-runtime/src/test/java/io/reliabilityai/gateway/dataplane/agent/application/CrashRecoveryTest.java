@@ -140,6 +140,10 @@ class CrashRecoveryTest {
     runtimeOver(runs, executor).start(run, plan, security("chat"), plan.bounds(), 1_000_000L);
 
     leaveInterrupted(runs, 0, "a", StepKind.PIPELINE);
+    // No terminal record and the session deadline has not passed: the worker may still be live.
+    assertThat(executor.advance(run)).isInstanceOf(RunExecutor.Advance.Contended.class);
+    assertThat(runs.load(run).orElseThrow().endsInterrupted()).isTrue();
+    clock.advance(Duration.ofMinutes(2));
     final RunExecutor.Advance resumed = executor.advance(run);
 
     assertThat(resumed).isInstanceOf(RunExecutor.Advance.Terminated.class);
@@ -164,6 +168,7 @@ class CrashRecoveryTest {
     runtimeOver(runs, executor).start(run, plan, security("chat"), plan.bounds(), 1_000_000L);
 
     leaveInterrupted(runs, 0, "a", StepKind.PIPELINE);
+    clock.advance(Duration.ofMinutes(2));
     executor.advance(run);
 
     assertThat(sessions.requests()).isEmpty();
@@ -194,6 +199,23 @@ class CrashRecoveryTest {
     final RunExecutor.Advance resumed = executor.advance(run);
     assertThat(resumed).isInstanceOf(RunExecutor.Advance.Advanced.class);
     assertThat(metrics.counter("recovery.interrupted.ADOPTED")).isEqualTo(1L);
+  }
+
+  @Test
+  void anUnknownToolOutcomeWaitsForItsDeadlineBeforeFailingClosed() {
+    final InMemoryRunRepository runs = new InMemoryRunRepository();
+    final Plan plan = plan(tool("fetch", "search"));
+    plans.publish(plan);
+    final RunExecutor executor = executorOver(runs, new FakeSessions(), new FakeTools());
+    runtimeOver(runs, executor).start(run, plan, security("search"), plan.bounds(), 1_000_000L);
+
+    leaveInterrupted(runs, 0, "fetch", StepKind.PLUGIN);
+    assertThat(executor.advance(run)).isInstanceOf(RunExecutor.Advance.Contended.class);
+    assertThat(runs.load(run).orElseThrow().endsInterrupted()).isTrue();
+
+    clock.advance(Duration.ofSeconds(31));
+    assertThat(executor.advance(run)).isInstanceOf(RunExecutor.Advance.Terminated.class);
+    assertThat(runs.load(run).orElseThrow().terminated()).isTrue();
   }
 
   @Test
@@ -324,6 +346,8 @@ class CrashRecoveryTest {
 
     final FakeSessions secondSessions = new FakeSessions().forgetful();
     final RunExecutor secondExecutor = executorOver(secondNode, secondSessions, new FakeTools());
+    // A new node must not declare an unknown outcome failed while it may still be running.
+    clock.advance(Duration.ofMinutes(2));
     secondExecutor.advance(run);
 
     assertThat(secondSessions.requests()).isEmpty();

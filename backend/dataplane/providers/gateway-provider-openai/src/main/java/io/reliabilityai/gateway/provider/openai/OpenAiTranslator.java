@@ -138,8 +138,8 @@ public final class OpenAiTranslator implements ProviderTranslator {
       // A TLS failure is a trust problem. Retrying cannot fix an untrusted chain, and retrying past
       // a
       // certificate error is exactly how a MITM gets a second chance.
-      case TLS -> new CanonicalError(ErrorCategory.TRANSPORT, Boolean.FALSE, opaque, false);
-      case CANCELLED -> new CanonicalError(ErrorCategory.TRANSPORT, Boolean.FALSE, opaque, false);
+      case TLS, CANCELLED ->
+          new CanonicalError(ErrorCategory.TRANSPORT, Boolean.FALSE, opaque, false);
     };
   }
 }

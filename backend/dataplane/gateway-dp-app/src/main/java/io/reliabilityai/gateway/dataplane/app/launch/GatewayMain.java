@@ -6,7 +6,6 @@ import io.reliabilityai.gateway.dataplane.secrets.adapter.LastKnownGoodCredentia
 import io.reliabilityai.gateway.dataplane.secrets.adapter.SnapshotCredentialMaterialSource;
 import java.io.IOException;
 import java.nio.file.Files;
-import java.time.Instant;
 import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.CountDownLatch;
@@ -19,10 +18,12 @@ import java.util.concurrent.CountDownLatch;
  * class only owns the process lifecycle — start, park, and stop once on the way out.
  *
  * <p>Startup is fail-closed and loud. A node that cannot read its credentials, create its data
- * directory or bind its port exits non-zero with the reason on stderr, rather than reaching a
+ * directory or bind its port exits non-zero with a structured error log, rather than reaching a
  * half-wired state that answers health checks and fails real traffic.
  */
 public final class GatewayMain {
+
+  private static final System.Logger LOG = System.getLogger(GatewayMain.class.getName());
 
   private GatewayMain() {}
 
@@ -35,13 +36,11 @@ public final class GatewayMain {
     try {
       run();
     } catch (final LaunchConfigurationException failure) {
-      System.err.println("startup refused: " + failure.getMessage());
-      System.err.println();
-      usage(System.err);
+      LOG.log(System.Logger.Level.ERROR, "startup refused: {0}", failure.getMessage());
+      LOG.log(System.Logger.Level.ERROR, usage());
       Runtime.getRuntime().halt(2);
     } catch (final IOException | RuntimeException failure) {
-      System.err.println("startup failed: " + failure);
-      failure.printStackTrace(System.err);
+      LOG.log(System.Logger.Level.ERROR, "startup failed", failure);
       Runtime.getRuntime().halt(1);
     }
   }
@@ -62,7 +61,7 @@ public final class GatewayMain {
         .addShutdownHook(
             new Thread(
                 () -> {
-                  System.out.println("stopping...");
+                  LOG.log(System.Logger.Level.INFO, "stopping...");
                   runtime.stop();
                   stopped.countDown();
                 },
@@ -94,44 +93,48 @@ public final class GatewayMain {
                 new CredentialSnapshotRef(
                     LaunchWiring.credentialVersion(),
                     LaunchWiring.TENANT,
-                    Instant.now().plusSeconds(86_400L)),
+                    LaunchWiring.now().plusSeconds(86_400L)),
                 settings.providerApiKey())));
   }
 
   private static void announce(final LaunchSettings settings, final int port) {
     final String base = "http://" + settings.bindHost() + ":" + port;
-    System.out.printf(
-        Locale.ROOT,
-        "%nReliability-First AI Gateway is READY%n"
-            + "  node        %s%n"
-            + "  listening   %s%n"
-            + "  model       %s%n"
-            + "  provider    %s%n"
-            + "  tenant      %s%n%n"
-            + "  health      curl %s/health%n"
-            + "  ready       curl %s/ready%n"
-            + "  metrics     curl %s/metrics%n%n"
-            + "Governance decisions print below as AUDIT lines.%n%n",
-        settings.nodeId(),
-        base,
-        settings.model().value(),
-        settings.providerBaseUri(),
-        LaunchWiring.TENANT,
-        base,
-        base,
-        base);
+    final String message =
+        String.format(
+            Locale.ROOT,
+            "%nReliability-First AI Gateway is READY%n"
+                + "  node        %s%n"
+                + "  listening   %s%n"
+                + "  model       %s%n"
+                + "  provider    %s%n"
+                + "  tenant      %s%n%n"
+                + "  health      curl %s/health%n"
+                + "  ready       curl %s/ready%n"
+                + "  metrics     curl %s/metrics%n%n"
+                + "Governance decisions print below as AUDIT lines.%n%n",
+            settings.nodeId(),
+            base,
+            settings.model().value(),
+            settings.providerBaseUri(),
+            LaunchWiring.TENANT,
+            base,
+            base,
+            base);
+    LOG.log(System.Logger.Level.INFO, message);
   }
 
-  private static void usage(final java.io.PrintStream out) {
-    out.println("Environment:");
-    out.println("  GATEWAY_PROVIDER_API_KEY  (required)  upstream provider credential");
-    out.println("  GATEWAY_PROVIDER_BASE_URI (required)  provider API root, scheme and host");
-    out.println("  GATEWAY_API_KEY           (required)  bearer token callers must present");
-    out.println("  GATEWAY_MODEL             (required)  canonical model this node serves");
-    out.println("  GATEWAY_PROVIDER          (optional)  adapter id; only needed if several");
-    out.println("  GATEWAY_HOST              (default 127.0.0.1)");
-    out.println("  GATEWAY_PORT              (default 8080)");
-    out.println("  GATEWAY_NODE_ID           (default gateway-local)");
-    out.println("  GATEWAY_DATA_DIR          (default ./data)  write-ahead log, dead-letter file");
+  private static String usage() {
+    return String.join(
+        "\n",
+        "Environment:",
+        "  GATEWAY_PROVIDER_API_KEY  (required)  upstream provider credential",
+        "  GATEWAY_PROVIDER_BASE_URI (required)  provider API root, scheme and host",
+        "  GATEWAY_API_KEY           (required)  bearer token callers must present",
+        "  GATEWAY_MODEL             (required)  canonical model this node serves",
+        "  GATEWAY_PROVIDER          (optional)  adapter id; only needed if several",
+        "  GATEWAY_HOST              (default 127.0.0.1)",
+        "  GATEWAY_PORT              (default 8080)",
+        "  GATEWAY_NODE_ID           (default gateway-local)",
+        "  GATEWAY_DATA_DIR          (default ./data)  write-ahead log, dead-letter file");
   }
 }

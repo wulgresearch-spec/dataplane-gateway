@@ -11,6 +11,7 @@ import io.reliabilityai.gateway.dataplane.plugin.domain.DependencyGraph;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Locale;
 import java.util.Set;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -147,7 +148,10 @@ class DependencyGraphTest {
     final List<PluginManifest> chain = new ArrayList<>();
     chain.add(depending("p00"));
     for (int index = 1; index < 25; index++) {
-      chain.add(depending(String.format("p%02d", index), String.format("p%02d", index - 1)));
+      chain.add(
+          depending(
+              String.format(Locale.ROOT, "p%02d", index),
+              String.format(Locale.ROOT, "p%02d", index - 1)));
     }
     final List<PluginId> order = new DependencyGraph(chain).startOrder();
     assertThat(order).hasSize(25);

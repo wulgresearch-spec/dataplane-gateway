@@ -63,13 +63,6 @@ public sealed interface Step
    */
   long budgetMicros();
 
-  /** Sorts a declared capability set so plan digests are stable across nodes. */
-  private static java.util.SortedSet<String> freeze(
-      final Set<String> capabilities, final String field) {
-    Preconditions.requireNonNull(capabilities, field);
-    return new TreeSet<>(capabilities);
-  }
-
   /**
    * One model invocation: one tool session, hence at least one complete pipeline execution.
    *
@@ -110,11 +103,10 @@ public sealed interface Step
       Preconditions.requireNonBlank(name, "name");
       Preconditions.requireNonNull(instruction, "instruction");
       inputRefs = inputRefs == null ? List.of() : List.copyOf(inputRefs);
-      // The unmodifiable wrapper is applied here, not inside freeze(): SpotBugs judges exposure
-      // one frame at a time and cannot see a copy made further down.
+      // Validate and copy before wrapping: immutable, deterministically sorted capability set.
+      Preconditions.requireNonNull(requiredCapabilities, "requiredCapabilities");
       requiredCapabilities =
-          java.util.Collections.unmodifiableSortedSet(
-              freeze(requiredCapabilities, "requiredCapabilities"));
+          java.util.Collections.unmodifiableSortedSet(new TreeSet<>(requiredCapabilities));
       Preconditions.requireNonNegative(maxOutputTokens, "maxOutputTokens");
       Preconditions.requireNonNegative(budgetMicros, "budgetMicros");
       Preconditions.requireNonNull(deadline, "deadline");

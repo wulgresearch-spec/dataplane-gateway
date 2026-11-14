@@ -16,8 +16,8 @@ import java.util.concurrent.TimeUnit;
  *
  * <p>Bounded on purpose. The queue has a fixed capacity, so a SchemaLock session that falls behind
  * slows the producer rather than letting the gateway buffer an unbounded response. If the consumer
- * has gone away entirely, offers time out and are dropped rather than blocking the transport thread
- * forever — validation degrading is preferable to a stuck stream.
+ * has gone away entirely, offers time out and trigger a terminal validation failure rather than
+ * blocking the transport thread forever or accepting incomplete structured output.
  */
 public final class SchemaLockStreamBridge implements StreamSourcePort {
 
@@ -27,14 +27,21 @@ public final class SchemaLockStreamBridge implements StreamSourcePort {
 
   private final BlockingQueue<StreamItem> queue = new ArrayBlockingQueue<>(CAPACITY);
   private volatile boolean closed;
+  private volatile boolean deliveryFailed;
 
   @Override
   public StreamItem next() {
+    if (deliveryFailed) {
+      return new StreamItem.TransportFailed(FailureClass.RESOURCE_EXCEEDED);
+    }
     try {
       final StreamItem item = queue.poll(POLL_TIMEOUT_MILLIS, TimeUnit.MILLISECONDS);
-      // A silent producer is a failure, not an end-of-stream: reporting TransportComplete here
-      // would
-      // tell SchemaLock a truncated response was whole.
+      // An overflow must never be misreported as a conformant or complete response,
+      // including when some queued fragments were consumed before the failure.
+      if (deliveryFailed) {
+        return new StreamItem.TransportFailed(FailureClass.RESOURCE_EXCEEDED);
+      }
+      // A silent producer is a failure, not an end-of-stream.
       return item == null ? new StreamItem.TransportFailed(FailureClass.TIMEOUT) : item;
     } catch (final InterruptedException interrupted) {
       Thread.currentThread().interrupt();
@@ -77,9 +84,16 @@ public final class SchemaLockStreamBridge implements StreamSourcePort {
   }
 
   private void put(final StreamItem item) {
+    if (deliveryFailed) {
+      return;
+    }
     try {
-      queue.offer(item, OFFER_TIMEOUT_MILLIS, TimeUnit.MILLISECONDS);
+      if (!queue.offer(item, OFFER_TIMEOUT_MILLIS, TimeUnit.MILLISECONDS)) {
+        // A missing fragment is an incomplete validation stream: fail closed.
+        deliveryFailed = true;
+      }
     } catch (final InterruptedException interrupted) {
+      deliveryFailed = true;
       Thread.currentThread().interrupt();
     }
   }

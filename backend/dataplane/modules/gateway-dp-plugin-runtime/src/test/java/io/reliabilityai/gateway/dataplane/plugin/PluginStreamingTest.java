@@ -283,6 +283,21 @@ class PluginStreamingTest {
   }
 
   @Test
+  @DisplayName("cancellation replaces a full buffer with a terminal")
+  void cancellationReplacesFullBufferWithTerminal() throws Exception {
+    final BoundedPluginStream channel = new BoundedPluginStream(1, () -> {});
+    assertThat(channel.emit(new PluginEvent.Token("stale"))).isTrue();
+    assertThat(channel.buffered()).isEqualTo(1);
+
+    channel.cancel();
+
+    final PluginEvent event = channel.next();
+    assertThat(event).isInstanceOf(PluginEvent.Failed.class);
+    assertThat(((PluginEvent.Failed) event).error().kind()).isEqualTo(PluginFailureKind.CANCELLED);
+    assertThat(channel.buffered()).isZero();
+  }
+
+  @Test
   @DisplayName("the producer blocks once the buffer is full, so memory stays bounded")
   void producerBlocksOnAFullBuffer() throws Exception {
     final BoundedPluginStream channel = new BoundedPluginStream(2, () -> {});

@@ -202,6 +202,37 @@ final class EmbeddingBatcherTest {
   }
 
   @Test
+  @DisplayName("coalescing obeys UTF-8 payload limits without dropping oversized inputs")
+  void coalescingObeysUtf8PayloadLimits() throws Exception {
+    final List<List<String>> sent = new ArrayList<>();
+    try (EmbeddingBatcher batcher =
+        new EmbeddingBatcher(
+            8,
+            9,
+            Duration.ofSeconds(30),
+            100,
+            EmbeddingMetricsPort.NOOP,
+            request -> {
+              sent.add(request.texts());
+              return succeed(request);
+            })) {
+      final List<CompletableFuture<EmbeddingResponse.Outcome>> futures = new ArrayList<>();
+      futures.add(batcher.submit(ACME, MODEL, "€€", EmbeddingRequest.EmbeddingPurpose.WRITE));
+      futures.add(batcher.submit(ACME, MODEL, "abcde", EmbeddingRequest.EmbeddingPurpose.WRITE));
+      futures.add(batcher.submit(ACME, MODEL, "€€", EmbeddingRequest.EmbeddingPurpose.WRITE));
+      futures.add(batcher.submit(ACME, MODEL, "abc", EmbeddingRequest.EmbeddingPurpose.WRITE));
+      futures.add(batcher.submit(ACME, MODEL, "€€€€", EmbeddingRequest.EmbeddingPurpose.WRITE));
+
+      for (final CompletableFuture<EmbeddingResponse.Outcome> future : futures) {
+        assertThat(future.get(5, TimeUnit.SECONDS).ok()).isTrue();
+      }
+      assertThat(sent)
+          .containsExactly(List.of("€€"), List.of("abcde"), List.of("€€", "abc"), List.of("€€€€"));
+      assertThat(batcher.queueDepth()).isZero();
+    }
+  }
+
+  @Test
   @DisplayName("a full queue refuses rather than growing without bound")
   void aFullQueueRefusesRatherThanGrowingWithoutBound() throws Exception {
     try (EmbeddingBatcher batcher =

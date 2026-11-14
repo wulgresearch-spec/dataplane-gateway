@@ -163,20 +163,21 @@ public final class ProcessPluginAdapter implements ToolPlugin {
    * works-on-my-machine plugin.
    */
   private static String readReplyLine(final Process child) throws IOException {
-    final BufferedReader reader =
-        new BufferedReader(new InputStreamReader(child.getInputStream(), StandardCharsets.UTF_8));
-    final StringBuilder line = new StringBuilder();
-    int character;
-    while ((character = reader.read()) >= 0) {
-      if (character == '\n') {
-        return stripCarriageReturn(line);
+    try (BufferedReader reader =
+        new BufferedReader(new InputStreamReader(child.getInputStream(), StandardCharsets.UTF_8))) {
+      final StringBuilder line = new StringBuilder();
+      int character;
+      while ((character = reader.read()) >= 0) {
+        if (character == '\n') {
+          return stripCarriageReturn(line);
+        }
+        line.append((char) character);
+        if (line.length() > MAX_REPLY_LINE) {
+          throw new IOException("plugin process reply exceeded the accepted length");
+        }
       }
-      line.append((char) character);
-      if (line.length() > MAX_REPLY_LINE) {
-        throw new IOException("plugin process reply exceeded the accepted length");
-      }
+      return line.isEmpty() ? null : stripCarriageReturn(line);
     }
-    return line.isEmpty() ? null : stripCarriageReturn(line);
   }
 
   private static String stripCarriageReturn(final StringBuilder line) {

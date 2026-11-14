@@ -41,6 +41,7 @@ import io.reliabilityai.gateway.dataplane.schema.validator.api.SchemaValidatorCo
 import io.reliabilityai.gateway.dataplane.schemalock.api.SchemaLockPolicy;
 import io.reliabilityai.gateway.dataplane.secrets.adapter.SystemClock;
 import io.reliabilityai.gateway.dataplane.streamguard.api.StreamGuardPolicy;
+import io.reliabilityai.gateway.ports.ClockPort;
 import java.net.http.HttpClient;
 import java.nio.file.Path;
 import java.security.SecureRandom;
@@ -88,6 +89,14 @@ final class LaunchWiring {
   /** Seeded once and reused: a fresh instance per call reseeds needlessly. */
   private static final SecureRandom SECURE_RANDOM = new SecureRandom();
 
+  // The sole ambient clock factory is at the composition root. Every consumer reads ClockPort.
+  private static final ClockPort CLOCK = productionClock();
+
+  @CompositionRootClockSource
+  private static ClockPort productionClock() {
+    return new SystemClock(Clock.systemUTC());
+  }
+
   private LaunchWiring() {}
 
   /**
@@ -97,6 +106,11 @@ final class LaunchWiring {
    */
   static SnapshotVersion credentialVersion() {
     return CREDENTIAL_VERSION;
+  }
+
+  /** Returns the shared clock's current instant for startup credential expiry. */
+  static Instant now() {
+    return CLOCK.now();
   }
 
   /**
@@ -133,7 +147,7 @@ final class LaunchWiring {
         settings.nodeId(),
         configSnapshot(),
         masterKey(),
-        new SystemClock(Clock.systemUTC()),
+        CLOCK,
         new GatewayRuntimeConfig.EventingConfig(
             walDirectory,
             new WalConfig(4096, WalSyncPolicy.ALWAYS),
@@ -223,9 +237,9 @@ final class LaunchWiring {
         tenantScope ->
             Optional.of(
                 new Entitlement(new SnapshotVersion("entitlement", "v1"), 500L, 1_000_000L)),
-        tenantScope -> Optional.of(new UsageState(0L, 0L, Clock.systemUTC().instant())),
+        tenantScope -> Optional.of(new UsageState(0L, 0L, CLOCK.now())),
         (tenantScope, feature) -> Optional.of(Boolean.TRUE),
-        new StdoutAuditSink(System.out),
+        new StructuredAuditSink(),
         Duration.ofSeconds(60));
   }
 

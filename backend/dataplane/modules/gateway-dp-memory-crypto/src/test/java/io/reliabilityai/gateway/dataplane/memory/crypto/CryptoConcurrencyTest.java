@@ -4,6 +4,7 @@ import static io.reliabilityai.gateway.dataplane.memory.crypto.CryptoFixtures.AC
 import static io.reliabilityai.gateway.dataplane.memory.crypto.CryptoFixtures.ACME_BOB;
 import static io.reliabilityai.gateway.dataplane.memory.crypto.CryptoFixtures.ACME_TENANT;
 import static io.reliabilityai.gateway.dataplane.memory.crypto.CryptoFixtures.GLOBEX_TENANT;
+import static io.reliabilityai.gateway.dataplane.memory.crypto.CryptoFixtures.writePrivateKeyring;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import io.reliabilityai.gateway.dataplane.memory.api.MemoryCryptoPort;
@@ -210,12 +211,12 @@ final class CryptoConcurrencyTest {
     final Path keyring = directory.resolve("keys");
     final String january = randomKey();
     final String july = randomKey();
-    Files.writeString(keyring, "primary = 2026-01\n2026-01 = " + january + "\n");
+    writePrivateKeyring(keyring, "primary = 2026-01\n2026-01 = " + january + "\n");
     final MemoryCryptoPort.Sealed old =
         new AeadMemoryCrypto(new FileMasterKeyProvider(keyring), new InProcessCryptoMetrics())
             .seal(ACME_ALICE, "january content");
 
-    Files.writeString(
+    writePrivateKeyring(
         keyring, "primary = 2026-07\n2026-01 = " + january + "\n2026-07 = " + july + "\n");
     final AeadMemoryCrypto after =
         new AeadMemoryCrypto(new FileMasterKeyProvider(keyring), new InProcessCryptoMetrics());
@@ -236,7 +237,7 @@ final class CryptoConcurrencyTest {
    */
   private static Path writeKeyring(final Path directory, final String version) throws Exception {
     final Path keyring = directory.resolve("keys");
-    Files.writeString(
+    writePrivateKeyring(
         keyring, "primary = " + version + "\n" + version + " = " + randomKey() + "\n");
     return keyring;
   }

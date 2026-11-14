@@ -27,6 +27,7 @@ import io.reliabilityai.gateway.dataplane.memory.internal.MemoryPolicyStore;
 import io.reliabilityai.gateway.dataplane.memory.internal.NotRealCryptoSealer;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
@@ -34,6 +35,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.logging.Logger;
 import org.junit.jupiter.api.DisplayNameGeneration;
 import org.junit.jupiter.api.DisplayNameGenerator;
 import org.junit.jupiter.api.Test;
@@ -54,6 +56,8 @@ import org.junit.jupiter.api.Test;
 @DisplayNameGeneration(DisplayNameGenerator.ReplaceUnderscores.class)
 class MemoryBenchmarkTest {
 
+  private static final Logger LOGGER = Logger.getLogger(MemoryBenchmarkTest.class.getName());
+
   private final InMemoryMemoryStore store = new InMemoryMemoryStore();
   private final InMemoryVectorIndex index = new InMemoryVectorIndex();
   private final MemoryPolicyStore policies = new MemoryPolicyStore(4);
@@ -61,9 +65,13 @@ class MemoryBenchmarkTest {
   private final TestClock clock = new TestClock();
 
   private static void report(final String what, final long nanos, final int iterations) {
-    System.out.printf(
-        "  PERF  %-38s %,10.0f ns/op  (%d iterations)%n",
-        what, (double) nanos / iterations, iterations);
+    LOGGER.info(
+        String.format(
+            Locale.ROOT,
+            "  PERF  %-38s %,10.0f ns/op  (%d iterations)",
+            what,
+            (double) nanos / iterations,
+            iterations));
   }
 
   private MemoryRuntime runtime() {
@@ -344,9 +352,13 @@ class MemoryBenchmarkTest {
     System.gc();
     final long after = jvm.totalMemory() - jvm.freeMemory();
     final long perRecord = Math.max(0L, (after - before) / records);
-    System.out.printf(
-        "  PERF  %-38s %,10d bytes/record (%d records)%n",
-        "resident record state", perRecord, records);
+    LOGGER.info(
+        String.format(
+            Locale.ROOT,
+            "  PERF  %-38s %,10d bytes/record (%d records)",
+            "resident record state",
+            perRecord,
+            records));
 
     // Loose by design: a heap delta measured around a GC is indicative, not exact. It catches an
     // order-of-magnitude regression such as retaining a full copy of every body twice over.

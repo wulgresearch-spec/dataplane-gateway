@@ -449,7 +449,7 @@ public final class JournalMemoryStore implements MemoryStorePort, AutoCloseable 
               .digest(raw.getBytes(java.nio.charset.StandardCharsets.UTF_8));
       final StringBuilder hex = new StringBuilder(12);
       for (int i = 0; i < 6; i++) {
-        hex.append(String.format("%02x", digest[i]));
+        hex.append(String.format(Locale.ROOT, "%02x", digest[i]));
       }
       return hex.toString();
     } catch (final java.security.NoSuchAlgorithmException impossible) {
@@ -461,7 +461,12 @@ public final class JournalMemoryStore implements MemoryStorePort, AutoCloseable 
     try (DirectoryStream<Path> found = Files.newDirectoryStream(root)) {
       for (final Path candidate : found) {
         if (Files.isDirectory(candidate)) {
-          final String key = candidate.getFileName().toString();
+          final Path filename = candidate.getFileName();
+          if (filename == null) {
+            throw new MemoryStoreUnavailableException(
+                "tenant partition has no file name: " + candidate);
+          }
+          final String key = filename.toString();
           partitions.put(key, new TenantPartition(key, candidate, maxSegmentBytes, syncOnAppend));
         }
       }

@@ -157,11 +157,6 @@ public final class MemoryRanker {
       semanticRrf.put(semantic.get(rank).id().value(), 1.0d / (RRF_K + rank + 1));
     }
 
-    // The best possible fused contribution, used to bring the pair back into [0,1] so the fused
-    // signals
-    // remain comparable with the time and importance signals they are weighted against.
-    final double bestPossible = 2.0d / (RRF_K + 1);
-
     final java.util.Set<String> union = new java.util.LinkedHashSet<>(keywordRrf.keySet());
     union.addAll(semanticRrf.keySet());
 
@@ -174,8 +169,9 @@ public final class MemoryRanker {
       final EnumMap<RankingSignal, Double> signals = baseSignals(record, now);
       final double keywordPart = keywordRrf.getOrDefault(id, 0.0d);
       final double semanticPart = semanticRrf.getOrDefault(id, 0.0d);
-      signals.put(RankingSignal.KEYWORD_MATCH, clamp(keywordPart / bestPossible * 2.0d));
-      signals.put(RankingSignal.SIMILARITY, clamp(semanticPart / bestPossible * 2.0d));
+      // Normalize each RRF contribution by the best single-list rank (1 / (K + 1)).
+      signals.put(RankingSignal.KEYWORD_MATCH, clamp(keywordPart * (RRF_K + 1)));
+      signals.put(RankingSignal.SIMILARITY, clamp(semanticPart * (RRF_K + 1)));
       hits.add(new MemoryHit(record, combine(signals), signals, false));
     }
     return sortAndTruncate(hits, limit);

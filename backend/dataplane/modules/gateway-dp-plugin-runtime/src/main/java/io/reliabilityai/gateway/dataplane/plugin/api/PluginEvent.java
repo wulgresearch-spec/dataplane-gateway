@@ -52,7 +52,7 @@ public sealed interface PluginEvent
         throw new IllegalArgumentException("fraction must be within [0.0, 1.0]");
       }
       Preconditions.requireNonBlank(stage, "stage");
-      requireBounded(stage);
+      PluginEventPayloadBounds.requireBounded(stage);
     }
 
     @Override
@@ -70,7 +70,7 @@ public sealed interface PluginEvent
     /** Compact constructor bounding the token. */
     public Token {
       Preconditions.requireNonNull(text, "text");
-      requireBounded(text);
+      PluginEventPayloadBounds.requireBounded(text);
     }
 
     @Override
@@ -99,8 +99,8 @@ public sealed interface PluginEvent
     public ToolUpdate {
       Preconditions.requireNonBlank(toolName, "toolName");
       Preconditions.requireNonBlank(status, "status");
-      requireBounded(toolName);
-      requireBounded(status);
+      PluginEventPayloadBounds.requireBounded(toolName);
+      PluginEventPayloadBounds.requireBounded(status);
     }
 
     @Override
@@ -118,7 +118,7 @@ public sealed interface PluginEvent
     /** Compact constructor bounding the payload. */
     public PartialOutput {
       Preconditions.requireNonNull(payload, "payload");
-      requireBounded(payload);
+      PluginEventPayloadBounds.requireBounded(payload);
     }
 
     @Override
@@ -158,12 +158,6 @@ public sealed interface PluginEvent
     @Override
     public boolean terminal() {
       return true;
-    }
-  }
-
-  private static void requireBounded(final String payload) {
-    if (payload.length() > MAX_PAYLOAD_LENGTH) {
-      throw new IllegalArgumentException("event payload exceeds " + MAX_PAYLOAD_LENGTH);
     }
   }
 }

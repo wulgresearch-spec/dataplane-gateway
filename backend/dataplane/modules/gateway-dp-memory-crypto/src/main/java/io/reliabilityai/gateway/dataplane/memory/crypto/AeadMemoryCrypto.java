@@ -4,6 +4,8 @@ import io.reliabilityai.gateway.common.Preconditions;
 import io.reliabilityai.gateway.dataplane.memory.api.MemoryCryptoPort;
 import io.reliabilityai.gateway.dataplane.memory.api.MemoryScope;
 import io.reliabilityai.gateway.dataplane.memory.api.MemoryStoreUnavailableException;
+import java.io.IOException;
+import java.io.ObjectInputStream;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.security.GeneralSecurityException;
@@ -162,8 +164,20 @@ public final class AeadMemoryCrypto implements MemoryCryptoPort {
 
     private static final long serialVersionUID = 1L;
 
-    private final transient ThreadLocal<SecureRandom> perThread =
+    private transient ThreadLocal<SecureRandom> perThread =
         ThreadLocal.withInitial(SecureRandom::new);
+
+    /**
+     * Restores freshly seeded thread-local generators after deserialization.
+     *
+     * <p>ThreadLocal is not serializable, and a null generator must never reach nonce generation.
+     * Each thread still gets its own platform-seeded SecureRandom.
+     */
+    private void readObject(final ObjectInputStream input)
+        throws IOException, ClassNotFoundException {
+      input.defaultReadObject();
+      perThread = ThreadLocal.withInitial(SecureRandom::new);
+    }
 
     @Override
     public void nextBytes(final byte[] bytes) {

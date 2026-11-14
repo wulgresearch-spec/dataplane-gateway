@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
+import java.util.Locale;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -30,7 +31,7 @@ class RouterDigestTest {
             .digest("corr-1\0cand-a".getBytes(StandardCharsets.UTF_8));
     final StringBuilder expected = new StringBuilder(32);
     for (int i = 0; i < 16; i++) {
-      expected.append(String.format("%02x", digest[i] & 0xFF));
+      expected.append(String.format(Locale.ROOT, "%02x", digest[i] & 0xFF));
     }
 
     final String actual = RouterDigest.orderKey("corr-1", "cand-a");

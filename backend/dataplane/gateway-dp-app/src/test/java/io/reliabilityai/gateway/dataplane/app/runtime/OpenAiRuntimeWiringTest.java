@@ -3,7 +3,6 @@ package io.reliabilityai.gateway.dataplane.app.runtime;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-import com.sun.net.httpserver.HttpServer;
 import io.reliabilityai.gateway.canonical.context.RequestContext;
 import io.reliabilityai.gateway.canonical.identity.CausationId;
 import io.reliabilityai.gateway.canonical.identity.CorrelationId;
@@ -18,15 +17,13 @@ import io.reliabilityai.gateway.dataplane.app.MandatoryStage;
 import io.reliabilityai.gateway.dataplane.app.StartupValidationException;
 import io.reliabilityai.gateway.dataplane.app.pipeline.PipelineOutcome;
 import io.reliabilityai.gateway.dataplane.app.pipeline.RequestExecution;
+import io.reliabilityai.gateway.dataplane.app.testing.LoopbackHttpProvider;
 import io.reliabilityai.gateway.dataplane.governance.api.AuditSinkPort;
 import io.reliabilityai.gateway.dataplane.schemalock.api.Mode;
 import io.reliabilityai.gateway.dataplane.secrets.adapter.LastKnownGoodCredentialSnapshotCache;
 import io.reliabilityai.gateway.dataplane.secrets.adapter.SnapshotCredentialMaterialSource;
 import java.io.IOException;
-import java.io.OutputStream;
-import java.net.InetSocketAddress;
 import java.net.URI;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.time.Instant;
 import java.util.List;
@@ -49,36 +46,29 @@ class OpenAiRuntimeWiringTest {
 
   private final List<String> providerPaths = new CopyOnWriteArrayList<>();
   private final List<String> providerAuth = new CopyOnWriteArrayList<>();
-  private HttpServer provider;
+  private LoopbackHttpProvider provider;
   private GatewayRuntime runtime;
 
   @AfterEach
-  void tearDown() {
+  void tearDown() throws IOException {
     if (runtime != null && runtime.state() == GatewayRuntime.State.READY) {
       runtime.stop();
     }
     if (provider != null) {
-      provider.stop(0);
+      provider.close();
     }
   }
 
   private URI startProvider(final int status, final String body) throws IOException {
-    provider = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
-    provider.createContext(
-        "/",
-        exchange -> {
-          providerPaths.add(exchange.getRequestURI().getPath());
-          providerAuth.add(String.valueOf(exchange.getRequestHeaders().getFirst("Authorization")));
-          exchange.getRequestBody().readAllBytes();
-          final byte[] payload = body.getBytes(StandardCharsets.UTF_8);
-          exchange.getResponseHeaders().add("Content-Type", "application/json");
-          exchange.sendResponseHeaders(status, payload.length);
-          try (OutputStream out = exchange.getResponseBody()) {
-            out.write(payload);
-          }
-        });
-    provider.start();
-    return URI.create("http://127.0.0.1:" + provider.getAddress().getPort());
+    provider =
+        LoopbackHttpProvider.fixed(
+            status,
+            body,
+            request -> {
+              providerPaths.add(request.path());
+              providerAuth.add(String.valueOf(request.authorization()));
+            });
+    return provider.uri();
   }
 
   private GatewayRuntime runtime(

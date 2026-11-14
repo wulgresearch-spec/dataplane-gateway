@@ -21,6 +21,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.function.Supplier;
 
@@ -294,7 +295,7 @@ public final class OpenAiEmbeddingProvider implements EmbeddingProviderPort {
         case '\f' -> out.append("\\f");
         default -> {
           if (c < 0x20) {
-            out.append(String.format("\\u%04x", (int) c));
+            out.append(String.format(Locale.ROOT, "\\u%04x", (int) c));
           } else {
             out.append(c);
           }

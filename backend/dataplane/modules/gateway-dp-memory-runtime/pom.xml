@@ -42,4 +42,24 @@
       <scope>test</scope>
     </dependency>
   </dependencies>
+  <!--
+    Read/write telemetry needs monotonic elapsed durations; the injected ClockPort
+    represents wall time and can jump. Only the custom nanoTime restriction is
+    excepted for this module's latency measurements. All other custom signatures
+    and inherited JDK unsafe/deprecated/non-portable checks remain enabled.
+    Follow up with a dedicated injectable monotonic ticker.
+  -->
+  <build>
+    <plugins>
+      <plugin>
+        <groupId>de.thetaphi</groupId>
+        <artifactId>forbiddenapis</artifactId>
+        <configuration>
+          <signaturesFiles combine.self="override">
+            <signaturesFile>${build-tools.dir}/forbidden-signatures-memory-runtime.txt</signaturesFile>
+          </signaturesFiles>
+        </configuration>
+      </plugin>
+    </plugins>
+  </build>
 </project>

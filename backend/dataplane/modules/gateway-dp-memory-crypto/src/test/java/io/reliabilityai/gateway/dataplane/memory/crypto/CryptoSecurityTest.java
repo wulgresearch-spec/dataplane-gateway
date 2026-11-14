@@ -4,6 +4,7 @@ import static io.reliabilityai.gateway.dataplane.memory.crypto.CryptoFixtures.AC
 import static io.reliabilityai.gateway.dataplane.memory.crypto.CryptoFixtures.ACME_BOB;
 import static io.reliabilityai.gateway.dataplane.memory.crypto.CryptoFixtures.ACME_TENANT;
 import static io.reliabilityai.gateway.dataplane.memory.crypto.CryptoFixtures.GLOBEX_TENANT;
+import static io.reliabilityai.gateway.dataplane.memory.crypto.CryptoFixtures.writePrivateKeyring;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
@@ -269,7 +270,7 @@ final class CryptoSecurityTest {
     new java.security.SecureRandom().nextBytes(material);
     final String encoded = Base64.getEncoder().encodeToString(material);
     final Path keyring = directory.resolve("keys");
-    Files.writeString(keyring, "primary = v1\nv1 = " + encoded + "\n");
+    writePrivateKeyring(keyring, "primary = v1\nv1 = " + encoded + "\n");
 
     final FileMasterKeyProvider provider = new FileMasterKeyProvider(keyring);
 

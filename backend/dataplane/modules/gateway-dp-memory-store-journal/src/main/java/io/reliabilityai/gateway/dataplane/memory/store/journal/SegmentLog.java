@@ -14,6 +14,7 @@ import java.nio.file.StandardCopyOption;
 import java.nio.file.StandardOpenOption;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.function.Consumer;
 import java.util.zip.CRC32;
 
@@ -200,10 +201,11 @@ final class SegmentLog implements AutoCloseable {
       Files.createDirectories(target);
       int copied = 0;
       for (final Path segment : segmentsInOrder()) {
-        Files.copy(
-            segment,
-            target.resolve(segment.getFileName().toString()),
-            StandardCopyOption.REPLACE_EXISTING);
+        final Path filename = segment.getFileName();
+        if (filename == null) {
+          throw new MemoryStoreUnavailableException("journal segment has no file name: " + segment);
+        }
+        Files.copy(segment, target.resolve(filename), StandardCopyOption.REPLACE_EXISTING);
         copied++;
       }
       return copied;
@@ -373,11 +375,16 @@ final class SegmentLog implements AutoCloseable {
   }
 
   private Path segmentPath(final int number) {
-    return directory.resolve(String.format("%s%08d%s", SEGMENT_PREFIX, number, SEGMENT_SUFFIX));
+    return directory.resolve(
+        String.format(Locale.ROOT, "%s%08d%s", SEGMENT_PREFIX, number, SEGMENT_SUFFIX));
   }
 
   private static int numberOf(final Path segment) {
-    final String name = segment.getFileName().toString();
+    final Path filename = segment.getFileName();
+    if (filename == null) {
+      throw new MemoryStoreUnavailableException("journal segment has no file name: " + segment);
+    }
+    final String name = filename.toString();
     return Integer.parseInt(
         name.substring(SEGMENT_PREFIX.length(), name.length() - SEGMENT_SUFFIX.length()));
   }

@@ -42,4 +42,23 @@
       <scope>test</scope>
     </dependency>
   </dependencies>
+  <!--
+    Monotonic elapsed time is used only to flush timed embedding batches and to
+    record provider/request latency. The module-specific custom signature set
+    excludes only System.nanoTime; all other custom forbidden APIs and inherited
+    JDK unsafe, deprecated, and non-portable signatures remain enforced.
+  -->
+  <build>
+    <plugins>
+      <plugin>
+        <groupId>de.thetaphi</groupId>
+        <artifactId>forbiddenapis</artifactId>
+        <configuration>
+          <signaturesFiles combine.self="override">
+            <signaturesFile>${build-tools.dir}/forbidden-signatures-embedding.txt</signaturesFile>
+          </signaturesFiles>
+        </configuration>
+      </plugin>
+    </plugins>
+  </build>
 </project>

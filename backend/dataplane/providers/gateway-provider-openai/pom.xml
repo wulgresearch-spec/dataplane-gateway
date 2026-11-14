@@ -48,4 +48,26 @@
       <scope>test</scope>
     </dependency>
   </dependencies>
+  <!--
+    The two loopback HTTP fixtures use the JDK's jdk.httpserver module
+    (com.sun.net.httpserver), which jdk-non-portable intentionally flags.
+    Exclude only those compiled test fixtures from forbiddenapis scanning;
+    JUnit still runs them, every other test class remains checked, and no
+    production class matches these exact test-only class-name patterns.
+    Include inner classes because Responder references HttpExchange.
+  -->
+  <build>
+    <plugins>
+      <plugin>
+        <groupId>de.thetaphi</groupId>
+        <artifactId>forbiddenapis</artifactId>
+        <configuration>
+          <excludes>
+            <exclude>**/FakeOpenAiServer*.class</exclude>
+            <exclude>**/HttpEmbeddingTransportTest*.class</exclude>
+          </excludes>
+        </configuration>
+      </plugin>
+    </plugins>
+  </build>
 </project>

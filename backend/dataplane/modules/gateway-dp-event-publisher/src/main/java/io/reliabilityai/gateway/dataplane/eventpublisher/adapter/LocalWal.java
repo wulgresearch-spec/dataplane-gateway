@@ -18,6 +18,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.Consumer;
@@ -528,7 +529,8 @@ public final class LocalWal implements WalPort, AutoCloseable {
       stream
           .filter(
               p -> {
-                final String name = p.getFileName().toString();
+                final String name =
+                    Objects.requireNonNull(p.getFileName(), "WAL segment filename").toString();
                 return name.startsWith(SEGMENT_PREFIX) && name.endsWith(SEGMENT_SUFFIX);
               })
           .sorted()
@@ -555,7 +557,8 @@ public final class LocalWal implements WalPort, AutoCloseable {
   }
 
   private static int segmentIndex(final Path segment) {
-    final String name = segment.getFileName().toString();
+    final String name =
+        Objects.requireNonNull(segment.getFileName(), "WAL segment filename").toString();
     return Integer.parseInt(
         name.substring(SEGMENT_PREFIX.length(), name.length() - SEGMENT_SUFFIX.length()));
   }
